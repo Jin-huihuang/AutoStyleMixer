@@ -40,7 +40,7 @@ def num_environments(dataset_name):
 class MultipleDomainDataset:
     N_STEPS = 5001  # Default, subclasses may override
     CHECKPOINT_FREQ = 100  # Default, subclasses may override
-    N_WORKERS = 4  # Default, subclasses may override
+    N_WORKERS = 12  # Default, subclasses may override
     ENVIRONMENTS = None  # Subclasses should override
     INPUT_SHAPE = None  # Subclasses should override
 
@@ -205,7 +205,9 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
 
 
 class VLCS(MultipleEnvironmentImageFolder):
-    CHECKPOINT_FREQ = 200
+    # CHECKPOINT_FREQ = 200
+    CHECKPOINT_FREQ = 2001
+    N_STEPS = 5001
     ENVIRONMENTS = ["C", "L", "S", "V"]
 
     def __init__(self, root):
@@ -214,7 +216,9 @@ class VLCS(MultipleEnvironmentImageFolder):
 
 
 class PACS(MultipleEnvironmentImageFolder):
+    # CHECKPOINT_FREQ = 200
     CHECKPOINT_FREQ = 200
+    N_STEPS = 5001
     ENVIRONMENTS = ["A", "C", "P", "S"]
 
     def __init__(self, root):
@@ -223,26 +227,29 @@ class PACS(MultipleEnvironmentImageFolder):
 
 
 class DomainNet(MultipleEnvironmentImageFolder):
+    # CHECKPOINT_FREQ = 1000
     CHECKPOINT_FREQ = 1000
     N_STEPS = 15001
     ENVIRONMENTS = ["clip", "info", "paint", "quick", "real", "sketch"]
 
     def __init__(self, root):
-        self.dir = os.path.join(root, "domain_net/")
+        self.dir = os.path.join(root, "DomainNet/")
         super().__init__(self.dir)
 
 
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 200
+    N_STEPS = 2001 ###################
     ENVIRONMENTS = ["A", "C", "P", "R"]
 
     def __init__(self, root):
-        self.dir = os.path.join(root, "office_home/")
+        self.dir = os.path.join(root, "OfficeHome/")
         super().__init__(self.dir)
 
 
 class TerraIncognita(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 200
+    N_STEPS = 5001 ###################
     ENVIRONMENTS = ["L100", "L38", "L43", "L46"]
 
     def __init__(self, root):

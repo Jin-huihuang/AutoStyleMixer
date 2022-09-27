@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
-
+import clip
 from domainbed.lib import wide_resnet
-
 
 class Identity(nn.Module):
     """An identity layer"""
@@ -58,6 +57,45 @@ class MLP(nn.Module):
         x = self.output(x)
         return x
 
+
+class CLIP(nn.Module):
+    def __init__(self, input_shape, hparams, network=None) -> None:
+        super(CLIP, self).__init__()
+        
+        self.network, self.preprocess = clip.load(hparams["backbone"], device="cuda", jit=False)
+        
+        self.hparams = hparams
+        self.logit_scale = self.network.logit_scale
+        self.freeze_bn()
+
+    def forward(self, x, y):
+        """Encode x into a feature vector of size n_outputs."""
+        image_features = self.network.encode_image(x)
+
+        # normalized features
+        image_features = image_features / image_features.norm(dim=1, keepdim=True)
+        text_features = y
+
+        # cosine similarity as logits
+        # logit_scale = self.logit_scale.exp()
+        logits_per_image = image_features @ text_features.t()
+
+        return logits_per_image
+
+    def train(self, mode=True):
+        """
+        Override the default train() to freeze the BN parameters
+        """
+        super().train(mode)
+        self.freeze_bn()
+
+    def freeze_bn(self):
+        if self.hparams["freeze_bn"] is False:
+            return
+
+        for m in self.network.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
 
 class ResNet(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""
@@ -190,6 +228,8 @@ def Featurizer(input_shape, hparams):
         return MNIST_CNN(input_shape)
     elif input_shape[1:3] == (32, 32):
         return wide_resnet.Wide_ResNet(input_shape, 16, 2, 0.0)
+    # elif hparams["CLIP"]:
+    #     return CLIP(input_shape, hparams)
     elif input_shape[1:3] == (224, 224):
         return ResNet(input_shape, hparams)
     else:

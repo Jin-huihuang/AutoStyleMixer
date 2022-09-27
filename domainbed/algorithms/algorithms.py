@@ -2,7 +2,7 @@
 
 import copy
 from typing import List
-
+from clip.model import convert_weights
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -82,7 +82,7 @@ class ERM(Algorithm):
     Empirical Risk Minimization (ERM)
     """
 
-    def __init__(self, input_shape, num_classes, num_domains, hparams):
+    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
@@ -107,6 +107,55 @@ class ERM(Algorithm):
 
     def predict(self, x):
         return self.network(x)
+
+class Contrast(Algorithm):
+    """
+    Learning Transferable Visual Models From Natural Language Supervision (CLIP)
+    """
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
+        super(Contrast, self).__init__(input_shape, num_classes, num_domains, hparams)
+        self.network = networks.CLIP(input_shape, self.hparams)
+        self.optimizer = get_optimizer(
+            hparams["optimizer"],
+            self.network.parameters(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
+        self.cerition = nn.CrossEntropyLoss()
+        self.class_token = kwargs["class_token"]
+        # prepare to encoding the class_name 
+        self.texts = self.to_texts_features(self.class_token)
+    
+    def to_texts_features(self, class_token):
+        text_features = self.network.network.encode_text(class_token).detach()
+        text_features = text_features / text_features.norm(dim=1, keepdim=True)
+        return text_features
+
+    def convert_models_to_fp32(self, model): 
+        for p in model.parameters():
+            p.data = p.data.float()
+            p.grad.data = p.grad.data.float()
+
+    def update(self, x, y, **kwargs):
+        all_x = torch.cat(x)
+        all_y = torch.cat(y)
+        logits_per_image = self.predict(all_x)
+        loss = self.cerition(logits_per_image, all_y)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        self.network.network.visual.float()
+
+        self.optimizer.step()
+        convert_weights(self.network.network.visual)
+
+        return {"loss": loss.item()}
+
+    def predict(self, images):
+        logits_per_image = self.network(images, self.texts)
+        return logits_per_image
 
 
 class Mixstyle(Algorithm):

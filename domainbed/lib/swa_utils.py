@@ -1,16 +1,18 @@
 # Burrowed from https://github.com/pytorch/pytorch/blob/master/torch/optim/swa_utils.py
 # modified for the DomainBed.
 import copy
+import itertools
 import torch
 from torch.nn import Module
 from copy import deepcopy
 
 
 class AveragedModel(Module):
-    def __init__(self, model, device=None, avg_fn=None, rm_optimizer=False):
+    def __init__(self, model, device=None, avg_fn=None, rm_optimizer=False, use_buffers=False):
         super(AveragedModel, self).__init__()
         self.start_step = -1
         self.end_step = -1
+        self.use_buffers = use_buffers
         if isinstance(model, AveragedModel):
             # prevent nested averagedmodel
             model = model.module
@@ -55,15 +57,32 @@ class AveragedModel(Module):
         """
         if isinstance(model, AveragedModel):
             model = model.module
-        for p_swa, p_model in zip(self.parameters(), model.parameters()):
+        # for p_swa, p_model in zip(self.parameters(), model.parameters()):
+        #     device = p_swa.device
+        #     p_model_ = p_model.detach().to(device)
+        #     if self.n_averaged == 0:
+        #         p_swa.detach().copy_(p_model_)
+        #     else:
+        #         p_swa.detach().copy_(
+        #             self.avg_fn(p_swa.detach(), p_model_, self.n_averaged.to(device))
+        #         )
+        # self.n_averaged += 1
+        self_param = (
+            itertools.chain(self.module.parameters(), self.module.buffers())
+            if self.use_buffers else self.parameters()
+        )
+        model_param = (
+            itertools.chain(model.parameters(), model.buffers())
+            if self.use_buffers else model.parameters()
+        )
+        for p_swa, p_model in zip(self_param, model_param):
             device = p_swa.device
             p_model_ = p_model.detach().to(device)
             if self.n_averaged == 0:
                 p_swa.detach().copy_(p_model_)
             else:
-                p_swa.detach().copy_(
-                    self.avg_fn(p_swa.detach(), p_model_, self.n_averaged.to(device))
-                )
+                p_swa.detach().copy_(self.avg_fn(p_swa.detach(), p_model_,
+                                                 self.n_averaged.to(device)))
         self.n_averaged += 1
 
         if step is not None:

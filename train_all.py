@@ -1,8 +1,10 @@
 import argparse
 import collections
+from distutils.util import strtobool
 import random
 import sys
 from pathlib import Path
+import clip
 
 import numpy as np
 import PIL
@@ -18,6 +20,11 @@ from domainbed.lib.writers import get_writer
 from domainbed.lib.logger import Logger
 from domainbed.trainer import train
 
+if torch.cuda.is_available():
+    device = "cuda"
+else:
+    device = "cpu"
+
 
 def main():
     parser = argparse.ArgumentParser(description="Domain generalization")
@@ -26,6 +33,7 @@ def main():
     parser.add_argument("--data_dir", type=str, default="datadir/")
     parser.add_argument("--dataset", type=str, default="PACS")
     parser.add_argument("--algorithm", type=str, default="ERM")
+    parser.add_argument("--use_buffers", type=strtobool, default=True)
     parser.add_argument(
         "--trial_seed",
         type=int,
@@ -149,6 +157,8 @@ def main():
     ###########################################################################
     all_records = []
     results = collections.defaultdict(list)
+    class_name = dataset.datasets[0].classes
+    class_token = torch.cat([clip.tokenize(f"{c}") for c in class_name]).to(device)
 
     for test_env in args.test_envs:
         res, records = train(
@@ -159,6 +169,7 @@ def main():
             checkpoint_freq=checkpoint_freq,
             logger=logger,
             writer=writer,
+            class_token=class_token
         )
         all_records.append(records)
         for k, v in res.items():

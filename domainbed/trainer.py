@@ -29,7 +29,7 @@ def json_handler(v):
     raise TypeError(f"`{type(v)}` is not JSON Serializable")
 
 
-def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, target_env=None):
+def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, target_env=None, **kwargs):
     logger.info("")
 
     #######################################################
@@ -125,6 +125,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         dataset.num_classes,
         len(dataset) - len(test_envs),
         hparams,
+        **kwargs
     )
 
     algorithm.to(device)
@@ -150,9 +151,9 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
 
     swad = None
     if hparams["swad"]:
-        swad_algorithm = swa_utils.AveragedModel(algorithm)
+        swad_algorithm = swa_utils.AveragedModel(algorithm, use_buffers=args.use_buffers)
         swad_cls = getattr(swad_module, hparams["swad"])
-        swad = swad_cls(evaluator, **hparams.swad_kwargs)
+        swad = swad_cls(evaluator, args.use_buffers, **hparams.swad_kwargs)
 
     last_results_keys = None
     records = []
@@ -254,7 +255,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                     logger.info("SWAD valley is dead -> early stop !")
                     break
 
-                swad_algorithm = swa_utils.AveragedModel(algorithm)  # reset
+                swad_algorithm = swa_utils.AveragedModel(algorithm, use_buffers=True)  # reset
 
         if step % args.tb_freq == 0:
             # add step values only for tb log

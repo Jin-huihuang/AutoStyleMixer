@@ -25,7 +25,7 @@ class IIDMax(SWADBase):
     def update_and_evaluate(self, segment_swa, val_acc, val_loss, prt_fn):
         if self.iid_max_acc < val_acc:
             self.iid_max_acc = val_acc
-            self.avgmodel = swa_utils.AveragedModel(segment_swa.module, rm_optimizer=True)
+            self.avgmodel = swa_utils.AveragedModel(segment_swa.module, rm_optimizer=True, use_buffers=True)
             self.avgmodel.start_step = segment_swa.start_step
 
         self.avgmodel.update_parameters(segment_swa.module)
@@ -50,7 +50,7 @@ class LossValley(SWADBase):
     LossValley choose SWAD range by detecting loss valley.
     """
 
-    def __init__(self, evaluator, n_converge, n_tolerance, tolerance_ratio, **kwargs):
+    def __init__(self, evaluator, use_buffers, n_converge, n_tolerance, tolerance_ratio, **kwargs):
         """
         Args:
             evaluator
@@ -59,9 +59,10 @@ class LossValley(SWADBase):
             tolerance_ratio: decision ratio for dead loss valley
         """
         self.evaluator = evaluator
-        self.n_converge = n_converge
-        self.n_tolerance = n_tolerance
-        self.tolerance_ratio = tolerance_ratio
+        self.use_buffers = use_buffers
+        self.n_converge = n_converge # 3
+        self.n_tolerance = n_tolerance # 6 
+        self.tolerance_ratio = tolerance_ratio # 0.3
 
         self.converge_Q = deque(maxlen=n_converge)
         self.smooth_Q = deque(maxlen=n_tolerance)
@@ -97,7 +98,7 @@ class LossValley(SWADBase):
             untilmin_segment_swa = self.converge_Q[min_idx]  # until-min segment swa.
             if min_idx == 0:
                 self.converge_step = self.converge_Q[0].end_step
-                self.final_model = swa_utils.AveragedModel(untilmin_segment_swa)
+                self.final_model = swa_utils.AveragedModel(untilmin_segment_swa, use_buffers=True)
 
                 th_base = np.mean([model.end_loss for model in self.converge_Q])
                 self.threshold = th_base * (1.0 + self.tolerance_ratio)
