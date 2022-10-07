@@ -12,3 +12,4 @@ perturb_results/
 *.sh
 *.ipynb
 nohup.out
+.vscode

@@ -147,6 +147,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         evalmode=args.evalmode,
         debug=args.debug,
         target_env=target_env,
+        hparams=hparams
     )
 
     swad = None
@@ -190,7 +191,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                 results[key] = np.mean(val)
 
             eval_start_time = time.time()
-            accuracies, summaries = evaluator.evaluate(algorithm)
+            accuracies, summaries = evaluator.evaluate(algorithm, args.algorithm)
             results["eval_time"] = time.time() - eval_start_time
 
             # results = (epochs, loss, step, step_time)
@@ -294,7 +295,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
             swa_utils.update_bn(train_minibatches_iterator, swad_algorithm, n_steps)
 
         logger.warning("Evaluate SWAD ...")
-        accuracies, summaries = evaluator.evaluate(swad_algorithm)
+        accuracies, summaries = evaluator.evaluate(swad_algorithm, args.algorithm)
         results = {**summaries, **accuracies}
         start = swad_algorithm.start_step
         end = swad_algorithm.end_step

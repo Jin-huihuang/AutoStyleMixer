@@ -19,14 +19,18 @@ def _hparams(algorithm, dataset, random_state):
     hparams["resnet_dropout"] = (0.0, random_state.choice([0.0, 0.1, 0.5]))
     hparams["class_balanced"] = (False, False)
     hparams["optimizer"] = ("adam", "adam")
+    hparams["CLIP"] = (True, True)
 
-    # hparams["CLIP"] = (True, True)
+    hparams["Linear_cls"] = (False, False)
     hparams["backbone"] = ("RN50", "RN50")
     hparams["freeze_bn"] = (True, True)
     hparams["pretrained"] = (True, True)  # only for ResNet
 
     if dataset not in SMALL_IMAGES:
-        hparams["lr"] = (1e-7, 10 ** random_state.uniform(-5, -3.5))
+        if algorithm == "Contrast":
+            hparams["lr"] = (1e-7, 10 ** random_state.uniform(-5, -3.5))
+        else:
+            hparams["lr"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
         if dataset == "DomainNet":
             hparams["batch_size"] = (32, int(2 ** random_state.uniform(3, 5)))
         else:

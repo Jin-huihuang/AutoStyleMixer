@@ -72,6 +72,8 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
+    if not hparams["CLIP"]:
+        hparams["lr"] = 5e-5
 
     # setup debug
     if args.debug:
@@ -80,7 +82,7 @@ def main():
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    args.unique_name = f"{timestamp}_{args.name}"
+    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['lr']}"
 
     # path setup
     args.work_dir = Path(".")
@@ -157,8 +159,10 @@ def main():
     ###########################################################################
     all_records = []
     results = collections.defaultdict(list)
+
+    # class_name to class_token
     class_name = dataset.datasets[0].classes
-    class_token = torch.cat([clip.tokenize(f"{c}") for c in class_name]).to(device)
+    class_token = torch.cat([clip.tokenize(f"an image of a {c}") for c in class_name]).to(device)
 
     for test_env in args.test_envs:
         res, records = train(

@@ -10,7 +10,7 @@ else:
     device = "cpu"
 
 
-def accuracy_from_loader(algorithm, loader, weights, debug=False):
+def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
     correct = 0
     total = 0
     losssum = 0.0
@@ -23,8 +23,12 @@ def accuracy_from_loader(algorithm, loader, weights, debug=False):
         y = batch["y"].to(device)
 
         with torch.no_grad():
-            logits = algorithm.predict(x)
-            loss = F.cross_entropy(logits, y).item()
+            if hparams['Linear_cls']:
+                logits, image_pred = algorithm.predict(x)
+                loss = F.cross_entropy(logits, y).item() + F.cross_entropy(image_pred, y).item()
+            else: 
+                logits = algorithm.predict(x)
+                loss = F.cross_entropy(logits, y).item()
 
         B = len(x)
         losssum += loss * B
@@ -51,19 +55,19 @@ def accuracy_from_loader(algorithm, loader, weights, debug=False):
     return acc, loss
 
 
-def accuracy(algorithm, loader_kwargs, weights, **kwargs):
+def accuracy(algorithm, loader_kwargs, weights, hparams, **kwargs):
     if isinstance(loader_kwargs, dict):
         loader = FastDataLoader(**loader_kwargs)
     elif isinstance(loader_kwargs, FastDataLoader):
         loader = loader_kwargs
     else:
         raise ValueError(loader_kwargs)
-    return accuracy_from_loader(algorithm, loader, weights, **kwargs)
+    return accuracy_from_loader(algorithm, loader, weights, hparams,**kwargs)
 
 
 class Evaluator:
     def __init__(
-        self, test_envs, eval_meta, n_envs, logger, evalmode="fast", debug=False, target_env=None
+        self, test_envs, eval_meta, n_envs, logger, evalmode="fast", debug=False, target_env=None, hparams=None
     ):
         all_envs = list(range(n_envs))
         train_envs = sorted(set(all_envs) - set(test_envs))
@@ -74,6 +78,7 @@ class Evaluator:
         self.logger = logger
         self.evalmode = evalmode
         self.debug = debug
+        self.hparams = hparams
 
         if target_env is not None:
             self.set_target_env(target_env)
@@ -82,7 +87,7 @@ class Evaluator:
         """When len(test_envs) == 2, you can specify target env for computing exact test acc."""
         self.test_envs = [target_env]
 
-    def evaluate(self, algorithm, ret_losses=False):
+    def evaluate(self, algorithm, A_method, ret_losses=False):
         n_train_envs = len(self.train_envs)
         n_test_envs = len(self.test_envs)
         assert n_test_envs == 1
@@ -106,7 +111,7 @@ class Evaluator:
                 continue
 
             is_test = env_num in self.test_envs
-            acc, loss = accuracy(algorithm, loader_kwargs, weights, debug=self.debug)
+            acc, loss = accuracy(algorithm, loader_kwargs, weights, self.hparams, debug=self.debug)
             accuracies[name] = acc
             losses[name] = loss
 

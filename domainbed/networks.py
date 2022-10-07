@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import torch
+import timm
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
@@ -59,28 +60,41 @@ class MLP(nn.Module):
 
 
 class CLIP(nn.Module):
-    def __init__(self, input_shape, hparams, network=None) -> None:
+    def __init__(self, input_shape, hparams, class_token, network=None) -> None:
         super(CLIP, self).__init__()
         
-        self.network, self.preprocess = clip.load(hparams["backbone"], device="cuda", jit=False)
-        
         self.hparams = hparams
-        self.logit_scale = self.network.logit_scale
+        CLIP_Net, self.preprocess = clip.load(hparams["backbone"], device="cuda", jit=False)
+        self.texts = self.to_texts_features(CLIP_Net, class_token)
+
+        if hparams["CLIP"]:
+            self.network = CLIP_Net
+            self.logit_scale = self.network.logit_scale
+        else: 
+            del CLIP_Net
+            self.network = timm.create_model("resnet50", pretrained=True)
+            self.extension = nn.Linear(in_features=self.network.num_features, out_features=self.texts.size(-1))
+            self.texts = self.texts.float()
+        
         self.freeze_bn()
 
-    def forward(self, x, y):
+    def forward(self, x):
         """Encode x into a feature vector of size n_outputs."""
-        image_features = self.network.encode_image(x)
-
+        if self.hparams["CLIP"]:
+            image_features = self.network.encode_image(x)
+        else:
+            image_features = self.network.forward_features(x)
+            image_features = self.network.global_pool(image_features)
+            image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
-        text_features = y
+        text_features = self.texts
 
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
         logits_per_image = image_features @ text_features.t()
 
-        return logits_per_image
+        return logits_per_image, image_features
 
     def train(self, mode=True):
         """
@@ -96,6 +110,11 @@ class CLIP(nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
+
+    def to_texts_features(self, CLIP_Net, class_token):
+        text_features = CLIP_Net.encode_text(class_token)
+        text_features = text_features / text_features.norm(dim=1, keepdim=True)
+        return text_features.detach()
 
 class ResNet(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""

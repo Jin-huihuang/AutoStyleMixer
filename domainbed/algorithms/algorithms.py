@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import copy
+from email.mime import image
 from typing import List
 from clip.model import convert_weights
 import torch
@@ -115,47 +116,70 @@ class Contrast(Algorithm):
 
     def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
         super(Contrast, self).__init__(input_shape, num_classes, num_domains, hparams)
-        self.network = networks.CLIP(input_shape, self.hparams)
+        
+        self.class_token = kwargs["class_token"]
+        self.network = networks.CLIP(input_shape, self.hparams, self.class_token)
+        # prepare to encoding the class_name 
+        self.texts = self.network.texts
+
+        # Linear classifier
+        if hparams["Linear_cls"]:
+            self.classifier = nn.Linear(self.texts.size(-1), num_classes, dtype=torch.float16)
+        params = self.get_params()
+
         self.optimizer = get_optimizer(
             hparams["optimizer"],
-            self.network.parameters(),
+            params=params,
             lr=self.hparams["lr"],
             weight_decay=self.hparams["weight_decay"],
         )
         self.cerition = nn.CrossEntropyLoss()
-        self.class_token = kwargs["class_token"]
-        # prepare to encoding the class_name 
-        self.texts = self.to_texts_features(self.class_token)
-    
-    def to_texts_features(self, class_token):
-        text_features = self.network.network.encode_text(class_token).detach()
-        text_features = text_features / text_features.norm(dim=1, keepdim=True)
-        return text_features
-
-    def convert_models_to_fp32(self, model): 
-        for p in model.parameters():
-            p.data = p.data.float()
-            p.grad.data = p.grad.data.float()
 
     def update(self, x, y, **kwargs):
         all_x = torch.cat(x)
         all_y = torch.cat(y)
-        logits_per_image = self.predict(all_x)
-        loss = self.cerition(logits_per_image, all_y)
 
+        if self.hparams["Linear_cls"]:
+            logits_per_image, image_pred = self.predict(all_x)
+            cls_loss = self.cerition(image_pred, all_y)
+            contrast_loss = self.cerition(logits_per_image, all_y)
+            loss = contrast_loss + 0.1 * cls_loss
+        else:
+            logits_per_image = self.predict(all_x)
+            contrast_loss = self.cerition(logits_per_image, all_y)
+            loss = contrast_loss
+
+        # CLIP model is float16
         self.optimizer.zero_grad()
         loss.backward()
-
-        self.network.network.visual.float()
-
+        if self.hparams["CLIP"]:
+            self.network.network.visual.float()
         self.optimizer.step()
-        convert_weights(self.network.network.visual)
+        if self.hparams["CLIP"]:
+            convert_weights(self.network.network.visual)
 
         return {"loss": loss.item()}
 
     def predict(self, images):
-        logits_per_image = self.network(images, self.texts)
-        return logits_per_image
+        logits_per_image, image_pred = self.network(images)
+        if self.hparams["Linear_cls"]:
+            image_pred = self.classifier(image_pred)
+            return logits_per_image, image_pred
+        else:
+            return logits_per_image
+
+    def get_params(self):
+        if self.hparams['Linear_cls']:
+            params = [
+                    {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                    {'params': self.classifier.parameters(), 'lr': 1.0 * self.hparams["lr"], 'eps': 1e-05}
+                ]
+        else:
+            params = [
+                    {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                ]
+        return params
+
 
 
 class Mixstyle(Algorithm):
