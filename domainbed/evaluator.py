@@ -8,10 +8,12 @@ if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
-
+Softmax = nn.Softmax(dim=1)
 
 def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
     correct = 0
+    correct_cls = 0
+    correct_integrate = 0
     total = 0
     losssum = 0.0
     weights_offset = 0
@@ -23,12 +25,15 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
         y = batch["y"].to(device)
 
         with torch.no_grad():
-            if hparams['Linear_cls']:
-                logits, image_pred = algorithm.predict(x)
-                loss = F.cross_entropy(logits, y).item() + F.cross_entropy(image_pred, y).item()
-            else: 
+            if hparams['algorithm'] == 'ERM':
                 logits = algorithm.predict(x)
                 loss = F.cross_entropy(logits, y).item()
+            elif not hparams['Linear_cls']:
+                logits = algorithm.predict(x)
+                loss = F.cross_entropy(logits, y).item()
+            else: 
+                logits, image_pred = algorithm.predict(x)
+                loss = F.cross_entropy(logits, y).item() + F.cross_entropy(image_pred, y).item()
 
         B = len(x)
         losssum += loss * B
@@ -43,6 +48,13 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
             correct += (logits.gt(0).eq(y).float() * batch_weights).sum().item()
         else:
             correct += (logits.argmax(1).eq(y).float() * batch_weights).sum().item()
+
+        if hparams['Linear_cls']:
+            correct_cls += (image_pred.argmax(1).eq(y).float() * batch_weights).sum().item()
+            logits = Softmax(logits)
+            image_pred = Softmax(image_pred)
+            correct_integrate += ((logits + image_pred).argmax(1).eq(y).float() * batch_weights).sum().item()
+        
         total += batch_weights.sum().item()
 
         if debug:
@@ -51,8 +63,10 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
     algorithm.train()
 
     acc = correct / total
+    acc_cls = correct_cls / total
+    acc_integrate = correct_integrate / total
     loss = losssum / total
-    return acc, loss
+    return acc, loss, acc_cls, acc_integrate
 
 
 def accuracy(algorithm, loader_kwargs, weights, hparams, **kwargs):
@@ -95,6 +109,10 @@ class Evaluator:
         # for key order
         summaries["test_in"] = 0.0
         summaries["test_out"] = 0.0
+        summaries["test_incls"] = 0.0
+        summaries["test_outcls"] = 0.0
+        summaries["test_ininte"] = 0.0
+        summaries["test_outinte"] = 0.0
         summaries["train_in"] = 0.0
         summaries["train_out"] = 0.0
         accuracies = {}
@@ -111,8 +129,10 @@ class Evaluator:
                 continue
 
             is_test = env_num in self.test_envs
-            acc, loss = accuracy(algorithm, loader_kwargs, weights, self.hparams, debug=self.debug)
+            acc, loss, acc_cls, acc_integrate = accuracy(algorithm, loader_kwargs, weights, self.hparams, debug=self.debug)
             accuracies[name] = acc
+            accuracies[name + 'cls'] = acc_cls
+            accuracies[name + 'inte'] = acc_integrate
             losses[name] = loss
 
             if env_num in self.train_envs:
@@ -121,6 +141,8 @@ class Evaluator:
                     summaries["tr_" + inout + "loss"] += loss / n_train_envs
             elif is_test:
                 summaries["test_" + inout] += acc / n_test_envs
+                summaries["test_" + inout + 'cls'] += acc_cls / n_test_envs
+                summaries["test_" + inout + 'inte'] += acc_integrate / n_test_envs
 
         if ret_losses:
             return accuracies, summaries, losses

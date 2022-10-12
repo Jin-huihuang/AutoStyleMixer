@@ -1,5 +1,6 @@
 import collections
 import json
+import os
 import time
 import copy
 from pathlib import Path
@@ -31,7 +32,7 @@ def json_handler(v):
 
 def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, target_env=None, **kwargs):
     logger.info("")
-
+    
     #######################################################
     # setup dataset & loader
     #######################################################
@@ -266,6 +267,8 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
     logger.info("---")
     records = Q(records)
     oracle_best = records.argmax("test_out")["test_in"]
+    oracle_best_cls = records.argmax("test_outcls")["test_incls"]
+    oracle_best_inte = records.argmax("test_outinte")["test_ininte"]
     iid_best = records.argmax("train_out")["test_in"]
     last = records[-1]["test_in"]
 
@@ -280,6 +283,8 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
 
     ret = {
         "oracle": oracle_best,
+        "oracle_best_cls": oracle_best_cls,
+        "oracle_best_inte": oracle_best_inte,
         "iid": iid_best,
         "last": last,
         "last (inD)": last_indomain,
@@ -302,8 +307,11 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         step_str = f" [{start}-{end}]  (N={swad_algorithm.n_averaged})"
         row = misc.to_row([results[key] for key in results_keys if key in results]) + step_str
         logger.info(row)
+        torch.save(swad_algorithm.module, os.path.join(args.out_dir, testenv_name + "_swad" + '.pth'))
 
         ret["SWAD"] = results["test_in"]
+        ret["SWAD_cls"] = results["test_incls"]
+        ret["SWAD_inte"] = results["test_ininte"]
         ret["SWAD (inD)"] = results[in_key]
 
     for k, acc in ret.items():

@@ -12,16 +12,19 @@ def _hparams(algorithm, dataset, random_state):
 
     hparams = {}
 
+    hparams['algorithm'] = (algorithm, algorithm)
     hparams['dataset'] = (dataset, dataset)
     hparams["data_augmentation"] = (True, True)
     hparams["val_augment"] = (False, False)  # augmentation for in-domain validation set
     hparams["resnet18"] = (False, False)
     hparams["resnet_dropout"] = (0.0, random_state.choice([0.0, 0.1, 0.5]))
     hparams["class_balanced"] = (False, False)
+    # hparams["scheduler"] = ("const", "const")
     hparams["optimizer"] = ("adam", "adam")
     hparams["CLIP"] = (True, True)
 
     hparams["Linear_cls"] = (False, False)
+    hparams["cls_w"] = (0.1, 0.1)
     hparams["backbone"] = ("RN50", "RN50")
     hparams["freeze_bn"] = (True, True)
     hparams["pretrained"] = (True, True)  # only for ResNet

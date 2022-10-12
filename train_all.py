@@ -57,6 +57,7 @@ def main():
     parser.add_argument("--tb_freq", default=10)
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
     parser.add_argument("--show", action="store_true", help="Show args and hparams w/o run")
+    parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument(
         "--evalmode",
         default="fast",
@@ -72,8 +73,9 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
-    if not hparams["CLIP"]:
-        hparams["lr"] = 5e-5
+    if hparams["CLIP"]:
+        hparams["lr"] = 1e-7
+    hparams["lr"] = args.lr
 
     # setup debug
     if args.debug:
@@ -173,7 +175,7 @@ def main():
             checkpoint_freq=checkpoint_freq,
             logger=logger,
             writer=writer,
-            class_token=class_token
+            class_token=class_token,
         )
         all_records.append(records)
         for k, v in res.items():

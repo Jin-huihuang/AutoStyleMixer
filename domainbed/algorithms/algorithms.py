@@ -124,7 +124,7 @@ class Contrast(Algorithm):
 
         # Linear classifier
         if hparams["Linear_cls"]:
-            self.classifier = nn.Linear(self.texts.size(-1), num_classes, dtype=torch.float16)
+            self.classifier = nn.Linear(self.texts.size(-1), num_classes)
         params = self.get_params()
 
         self.optimizer = get_optimizer(
@@ -143,7 +143,7 @@ class Contrast(Algorithm):
             logits_per_image, image_pred = self.predict(all_x)
             cls_loss = self.cerition(image_pred, all_y)
             contrast_loss = self.cerition(logits_per_image, all_y)
-            loss = contrast_loss + 0.1 * cls_loss
+            loss = contrast_loss + self.hparams['cls_w'] * cls_loss
         else:
             logits_per_image = self.predict(all_x)
             contrast_loss = self.cerition(logits_per_image, all_y)
@@ -170,10 +170,16 @@ class Contrast(Algorithm):
 
     def get_params(self):
         if self.hparams['Linear_cls']:
-            params = [
-                    {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 1.0 * self.hparams["lr"], 'eps': 1e-05}
-                ]
+            if self.hparams["CLIP"]:
+                params = [
+                        {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                        {'params': self.classifier.parameters(), 'lr': 1.0 * self.hparams["lr"], 'eps': 1e-5}
+                    ]
+            else:
+                params = [
+                        {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+                    ]
         else:
             params = [
                     {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
