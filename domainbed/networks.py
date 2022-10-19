@@ -96,6 +96,16 @@ class CLIP(nn.Module):
 
         return logits_per_image, image_features
 
+    def forward_features(self, x):
+        """Encode x into a feature vector of size n_outputs."""
+        if self.hparams["CLIP"]:
+            image_features = self.network.encode_image(x)
+        else:
+            image_features = self.network.forward_features(x)
+            image_features = self.network.global_pool(image_features)
+            image_features = self.extension(image_features)
+        return image_features
+
     def train(self, mode=True):
         """
         Override the default train() to freeze the BN parameters

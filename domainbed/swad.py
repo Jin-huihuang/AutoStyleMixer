@@ -61,7 +61,7 @@ class LossValley(SWADBase):
         self.evaluator = evaluator
         self.use_buffers = use_buffers
         self.n_converge = n_converge # 3
-        self.n_tolerance = n_tolerance # 6 
+        self.n_tolerance = n_tolerance # 6
         self.tolerance_ratio = tolerance_ratio # 0.3
 
         self.converge_Q = deque(maxlen=n_converge)
