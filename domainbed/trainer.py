@@ -173,7 +173,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         }
 
         inputs = {**batches, "step": step}
-        step_vals = algorithm.update(**inputs)
+        step_vals = algorithm.update(**inputs) # train
         for key, val in step_vals.items():
             checkpoint_vals[key].append(val)
         checkpoint_vals["step_time"].append(time.time() - step_start_time)
@@ -307,7 +307,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         step_str = f" [{start}-{end}]  (N={swad_algorithm.n_averaged})"
         row = misc.to_row([results[key] for key in results_keys if key in results]) + step_str
         logger.info(row)
-        torch.save(swad_algorithm.module, os.path.join(args.out_dir, testenv_name + "_swad" + '.pth'))
+        torch.save(swad_algorithm.module, os.path.join(args.out_dir, testenv_name + "-swad" + '.pth'))
 
         ret["SWAD"] = results["test_in"]
         ret["SWAD_cls"] = results["test_incls"]

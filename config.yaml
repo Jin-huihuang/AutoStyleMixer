@@ -8,6 +8,6 @@ swad_kwargs:
   tolerance_ratio: 0.3
 test_batchsize: 128
 indomain_test: False  # use indomain test split or not
-Linear_cls: True
+Linear_cls: False
 CLIP: False
 cls_w: 0.1

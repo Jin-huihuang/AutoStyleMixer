@@ -11,9 +11,9 @@ else:
 Softmax = nn.Softmax(dim=1)
 
 def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
-    correct = 0
-    correct_cls = 0
-    correct_integrate = 0
+    correct = 0 # CLIP Contrast
+    correct_cls = 0 # Linear
+    correct_integrate = 0 # Contrast + Linear
     total = 0
     losssum = 0.0
     weights_offset = 0

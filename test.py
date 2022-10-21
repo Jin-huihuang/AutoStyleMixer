@@ -37,9 +37,14 @@ def main():
         model.eval()
         sum = None
         targets = None
+        name = split('[- . /]', pth)
+        name = [item for item in filter(lambda x:x != '', name)]
+
         for env_i, env in enumerate(dataset):
+            if ('te_' + dataset.environments[env_i]) != name[-3]:
+                continue
             env.transform = DBT.basic
-            test_loader = DataLoader(env, batch_size=128, shuffle=True, num_workers=4)
+            test_loader = DataLoader(env, batch_size=32, shuffle=True, num_workers=4)
             with torch.no_grad():
                 if isinstance(model, ERM):
                     net = model.featurizer
@@ -50,7 +55,7 @@ def main():
                     data = data.to(device)
                     features = net(data)
                     if isinstance(model, Contrast):
-                        features = features[1]
+                        features = features[1] # features = (image_text logits, image_features)
                     if sum != None:
                         sum = torch.cat((sum, features), 0)
                         targets = torch.cat((targets, target), 0)
@@ -58,8 +63,6 @@ def main():
                         sum = features
                         targets = target
         X = TSNE().fit(sum.cpu())
-        name = split('[. _ /]', pth)
-        name = [item for item in filter(lambda x:x != '', name)]
         pyplot.scatter(X[:, 0], X[:, 1], 1, targets)
         pyplot.savefig(args.output_dir + "/" + name[-3] + ".png")
         # utils.plot(X, targets, save=args.output_dir + "/" + name[-3] + ".png")
