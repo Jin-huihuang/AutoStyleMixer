@@ -82,7 +82,9 @@ class CLIP(nn.Module):
             torch.cuda.empty_cache()
             
             self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
-            self.extension = nn.Linear(in_features=1000, out_features=self.texts.size(-1))
+            del self.network.fc
+            self.network.fc = Identity()
+            self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
             # self.network = timm.create_model(model_select[hparams['backbone']], pretrained=hparams["pretrained"])
             # self.extension = nn.Linear(in_features=self.network.num_features, out_features=self.texts.size(-1))
             self.texts = self.texts.float()
@@ -94,8 +96,8 @@ class CLIP(nn.Module):
         if self.hparams["CLIP"]:
             image_features = self.network.encode_image(x)
         else:
-            features = self.network(x)
-            image_features = self.extension(features)
+            image_features = self.network(x)
+            image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
         text_features = self.texts
@@ -104,7 +106,7 @@ class CLIP(nn.Module):
         # logit_scale = self.logit_scale.exp()
         logits_per_image = image_features @ text_features.t()
 
-        return logits_per_image, image_features, features
+        return logits_per_image, image_features
 
     def forward_features(self, x):
         """Encode x into a feature vector of size n_outputs."""

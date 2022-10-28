@@ -160,7 +160,9 @@ class Contrast(Algorithm):
         )
         self.cerition = nn.CrossEntropyLoss()
 
+
     def update(self, x, y, **kwargs):
+        self.optimizer.zero_grad()
         all_x = torch.cat(x)
         all_y = torch.cat(y)
 
@@ -175,7 +177,7 @@ class Contrast(Algorithm):
             loss = contrast_loss
 
         # CLIP model is float16
-        self.optimizer.zero_grad()
+        
         loss.backward()
         if self.hparams["CLIP"]:
             self.network.network.visual.float()
@@ -186,9 +188,9 @@ class Contrast(Algorithm):
         return {"loss": loss.item()}
 
     def predict(self, images):
-        logits_per_image, image_pred, features = self.network(images)
+        logits_per_image, image_pred = self.network(images)
         if self.hparams["Linear_cls"]:
-            image_pred = self.classifier(features)
+            image_pred = self.classifier(image_pred)
             return logits_per_image, image_pred
         else:
             return logits_per_image
@@ -203,7 +205,7 @@ class Contrast(Algorithm):
             else:
                 params = [
                         {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                        {'params': self.classifier.parameters(), 'lr': 10 * self.hparams["lr"]}
+                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
                     ]
         else:
             params = [
