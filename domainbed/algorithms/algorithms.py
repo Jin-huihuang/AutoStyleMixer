@@ -145,12 +145,13 @@ class Contrast(Algorithm):
         
         self.class_token = kwargs["class_token"]
         self.network = networks.CLIP(input_shape, self.hparams, self.class_token)
-        # prepare to encoding the class_name 
+        # prepare to encoding the class_name
         self.texts = self.network.texts
 
         # Linear classifier
         if hparams["Linear_cls"]:
-            self.classifier = nn.Linear(self.texts.size(-1), num_classes)
+            self.classifier = networks.fea_proj(hparams, num_classes)
+            # self.classifier = nn.Linear(self.texts.size(-1), num_classes)
 
         self.optimizer = get_optimizer(
             hparams["optimizer"],

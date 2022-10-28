@@ -82,11 +82,8 @@ class CLIP(nn.Module):
             torch.cuda.empty_cache()
             
             self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
-            del self.network.fc
             self.network.fc = Identity()
             self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
-            # self.network = timm.create_model(model_select[hparams['backbone']], pretrained=hparams["pretrained"])
-            # self.extension = nn.Linear(in_features=self.network.num_features, out_features=self.texts.size(-1))
             self.texts = self.texts.float()
         
         self.freeze_bn()
@@ -100,11 +97,11 @@ class CLIP(nn.Module):
             image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
-        text_features = self.texts
+        # text_features = self.texts
 
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
-        logits_per_image = image_features @ text_features.t()
+        logits_per_image = image_features @ self.texts.t()
 
         return logits_per_image, image_features
 
@@ -145,13 +142,12 @@ class ResNet(torch.nn.Module):
         super(ResNet, self).__init__()
         if hparams["resnet18"]:
             if network is None:
-                network = torchvision.models.resnet18(pretrained=hparams["pretrained"])
-            self.network = network
+                self.network = torchvision.models.resnet18(pretrained=hparams["pretrained"])
+            
             self.n_outputs = 512
         else:
             if network is None:
-                network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
-            self.network = network
+                self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
             self.n_outputs = 2048
 
         # adapt number of channels
@@ -167,7 +163,7 @@ class ResNet(torch.nn.Module):
                 self.network.conv1.weight.data[:, i, :, :] = tmp[:, i % 3, :, :]
 
         # save memory
-        del self.network.fc
+        # del self.network.fc
         self.network.fc = Identity()
 
         self.hparams = hparams
@@ -275,3 +271,58 @@ def Featurizer(input_shape, hparams):
         return ResNet(input_shape, hparams)
     else:
         raise NotImplementedError(f"Input shape {input_shape} is not supported")
+
+def fea_proj(hparams, out_dim):
+    if hparams['dataset'] == "OfficeHome":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['hidden_size']),
+            dropout,
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "DomainNet":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['hidden_size']),
+            dropout,
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "PACS":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "TerraIncognita":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "VLCS":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['hidden_size']),
+            dropout,
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    else:
+        pass
+    
+    return fea_proj
