@@ -8,6 +8,12 @@ import torchvision.models
 import clip
 from domainbed.lib import wide_resnet
 
+model_select = {
+    'RN50': 'resnet50',
+    'ViT': 'vit_b_16',
+    'RN50_CLIP': 'RN50',
+    'ViT_CLIP': 'ViT-B/16',
+}
 class Identity(nn.Module):
     """An identity layer"""
 
@@ -58,22 +64,27 @@ class MLP(nn.Module):
         x = self.output(x)
         return x
 
-
 class CLIP(nn.Module):
-    def __init__(self, input_shape, hparams, class_token, network=None) -> None:
+    def __init__(self, input_shape, hparams, class_token=None, network=None) -> None:
         super(CLIP, self).__init__()
-        
+
         self.hparams = hparams
-        CLIP_Net, self.preprocess = clip.load(hparams["backbone"], device="cuda", jit=False)
-        self.texts = self.to_texts_features(CLIP_Net, class_token)
+        CLIP_Net, self.preprocess = clip.load(model_select[hparams['backbone'] + '_CLIP'], device="cuda", jit=False)
+
+        if hparams["algorithm"] != 'ERM':
+            self.texts = self.to_texts_features(CLIP_Net, class_token)
 
         if hparams["CLIP"]:
             self.network = CLIP_Net
             self.logit_scale = self.network.logit_scale
         else: 
             del CLIP_Net
-            self.network = timm.create_model("resnet50", pretrained=True)
-            self.extension = nn.Linear(in_features=self.network.num_features, out_features=self.texts.size(-1))
+            torch.cuda.empty_cache()
+            
+            self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
+            self.extension = nn.Linear(in_features=1000, out_features=self.texts.size(-1))
+            # self.network = timm.create_model(model_select[hparams['backbone']], pretrained=hparams["pretrained"])
+            # self.extension = nn.Linear(in_features=self.network.num_features, out_features=self.texts.size(-1))
             self.texts = self.texts.float()
         
         self.freeze_bn()
@@ -83,9 +94,8 @@ class CLIP(nn.Module):
         if self.hparams["CLIP"]:
             image_features = self.network.encode_image(x)
         else:
-            image_features = self.network.forward_features(x)
-            image_features = self.network.global_pool(image_features)
-            image_features = self.extension(image_features)
+            features = self.network(x)
+            image_features = self.extension(features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
         text_features = self.texts
@@ -94,7 +104,7 @@ class CLIP(nn.Module):
         # logit_scale = self.logit_scale.exp()
         logits_per_image = image_features @ text_features.t()
 
-        return logits_per_image, image_features
+        return logits_per_image, image_features, features
 
     def forward_features(self, x):
         """Encode x into a feature vector of size n_outputs."""
@@ -257,8 +267,8 @@ def Featurizer(input_shape, hparams):
         return MNIST_CNN(input_shape)
     elif input_shape[1:3] == (32, 32):
         return wide_resnet.Wide_ResNet(input_shape, 16, 2, 0.0)
-    # elif hparams["CLIP"]:
-    #     return CLIP(input_shape, hparams)
+    elif hparams["CLIP"]:
+        return CLIP(input_shape, hparams)
     elif input_shape[1:3] == (224, 224):
         return ResNet(input_shape, hparams)
     else:

@@ -73,9 +73,9 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
+
     if hparams["CLIP"]:
-        hparams["lr"] = 1e-7
-    hparams["lr"] = args.lr
+        hparams["lr"] = 1e-6
 
     # setup debug
     if args.debug:
@@ -84,7 +84,7 @@ def main():
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['lr']}"
+    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['backbone']}_{hparams['lr']}"
 
     # path setup
     args.work_dir = Path(".")

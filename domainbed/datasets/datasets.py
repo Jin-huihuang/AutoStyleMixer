@@ -205,8 +205,8 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
 
 
 class VLCS(MultipleEnvironmentImageFolder):
-    # CHECKPOINT_FREQ = 200
-    CHECKPOINT_FREQ = 2001
+    CHECKPOINT_FREQ = 200
+    # CHECKPOINT_FREQ = 2001
     N_STEPS = 5001
     ENVIRONMENTS = ["C", "L", "S", "V"]
 

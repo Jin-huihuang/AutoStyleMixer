@@ -1,4 +1,5 @@
 import argparse
+from distutils.util import strtobool
 from glob import glob
 from re import split
 import torch
@@ -22,10 +23,11 @@ def main():
     parser.add_argument("--network", type=str, default="RN50")
     parser.add_argument("--output_dir", type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
     parser.add_argument("--data_dir", type=str)
-
+    parser.add_argument("--CLIP", type=strtobool, default=False)
     args = parser.parse_args()
 
     timestamp = misc.timestamp()
+    
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
 
@@ -41,10 +43,10 @@ def main():
         name = [item for item in filter(lambda x:x != '', name)]
 
         for env_i, env in enumerate(dataset):
-            if ('te_' + dataset.environments[env_i]) != name[-3]:
+            if ('te_' + dataset.environments[env_i]) == name[-3]:
                 continue
             env.transform = DBT.basic
-            test_loader = DataLoader(env, batch_size=32, shuffle=True, num_workers=4)
+            test_loader = DataLoader(env, batch_size=32, shuffle=False, num_workers=4)
             with torch.no_grad():
                 if isinstance(model, ERM):
                     net = model.featurizer

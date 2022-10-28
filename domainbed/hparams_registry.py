@@ -30,10 +30,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["pretrained"] = (True, True)  # only for ResNet
 
     if dataset not in SMALL_IMAGES:
-        if algorithm == "Contrast":
-            hparams["lr"] = (1e-7, 10 ** random_state.uniform(-5, -3.5))
-        else:
-            hparams["lr"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
+        hparams["lr"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
         if dataset == "DomainNet":
             hparams["batch_size"] = (32, int(2 ** random_state.uniform(3, 5)))
         else:

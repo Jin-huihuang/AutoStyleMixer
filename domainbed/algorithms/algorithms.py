@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import copy
-from email.mime import image
+from torch.cuda.amp import autocast
 from typing import List
 from clip.model import convert_weights
 import torch
@@ -85,12 +85,16 @@ class ERM(Algorithm):
 
     def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
-        self.featurizer = networks.Featurizer(input_shape, self.hparams)
-        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        if hparams["CLIP"]:
+            self.featurizer = networks.CLIP(input_shape, self.hparams)
+            self.classifier = nn.Linear(1024, num_classes)
+        else:
+            self.featurizer = networks.Featurizer(input_shape, self.hparams)
+            self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
         self.optimizer = get_optimizer(
             hparams["optimizer"],
-            self.network.parameters(),
+            params=self.get_params(),
             lr=self.hparams["lr"],
             weight_decay=self.hparams["weight_decay"],
         )
@@ -98,16 +102,38 @@ class ERM(Algorithm):
     def update(self, x, y, **kwargs):
         all_x = torch.cat(x)
         all_y = torch.cat(y)
-        loss = F.cross_entropy(self.predict(all_x), all_y)
-
         self.optimizer.zero_grad()
+
+        with autocast():
+            loss = F.cross_entropy(self.predict(all_x), all_y)
         loss.backward()
+        # CLIP model is float16
+        if self.hparams["CLIP"]:
+            self.featurizer.float()
         self.optimizer.step()
+        if self.hparams["CLIP"]:
+            convert_weights(self.featurizer)
 
         return {"loss": loss.item()}
 
     def predict(self, x):
-        return self.network(x)
+        with autocast():
+            if self.hparams["CLIP"]:
+                return self.classifier(self.featurizer.forward_features(x))
+            return self.network(x)
+
+    def get_params(self):
+        if self.hparams["CLIP"]:
+            params = [
+                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"], 'eps': 1e-5}
+                ]
+        else:
+            params = [
+                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+                ]
+        return params
 
 class Contrast(Algorithm):
     """
@@ -125,11 +151,10 @@ class Contrast(Algorithm):
         # Linear classifier
         if hparams["Linear_cls"]:
             self.classifier = nn.Linear(self.texts.size(-1), num_classes)
-        params = self.get_params()
 
         self.optimizer = get_optimizer(
             hparams["optimizer"],
-            params=params,
+            params=self.get_params(),
             lr=self.hparams["lr"],
             weight_decay=self.hparams["weight_decay"],
         )
@@ -161,9 +186,9 @@ class Contrast(Algorithm):
         return {"loss": loss.item()}
 
     def predict(self, images):
-        logits_per_image, image_pred = self.network(images)
+        logits_per_image, image_pred, features = self.network(images)
         if self.hparams["Linear_cls"]:
-            image_pred = self.classifier(image_pred)
+            image_pred = self.classifier(features)
             return logits_per_image, image_pred
         else:
             return logits_per_image
@@ -178,7 +203,7 @@ class Contrast(Algorithm):
             else:
                 params = [
                         {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+                        {'params': self.classifier.parameters(), 'lr': 10 * self.hparams["lr"]}
                     ]
         else:
             params = [
