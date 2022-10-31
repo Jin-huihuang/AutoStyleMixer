@@ -58,6 +58,8 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
     parser.add_argument("--show", action="store_true", help="Show args and hparams w/o run")
     parser.add_argument("--lr", type=float, default=5e-5)
+    parser.add_argument("--cls_w", type=float, default=0.1)
+    parser.add_argument("--text_dropout", type=float, default=0.25)
     parser.add_argument(
         "--evalmode",
         default="fast",
@@ -76,6 +78,8 @@ def main():
 
     if hparams["CLIP"]:
         hparams["lr"] = 1e-6
+    hparams['cls_w'] = args.cls_w
+    hparams['text_dropout'] = args.text_dropout
 
     # setup debug
     if args.debug:

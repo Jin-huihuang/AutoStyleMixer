@@ -15,4 +15,3 @@ lr: 5e-5
 Linear_cls: True
 CLIP: False
 backbone: RN50 # 'RN50', 'ViT'
-cls_w: 0.1

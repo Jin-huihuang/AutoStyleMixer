@@ -83,7 +83,13 @@ class CLIP(nn.Module):
             
             self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
             self.network.fc = Identity()
-            self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+            if hparams['text_dropout']:
+                self.extension = nn.Sequential(
+                nn.Linear(in_features=2048, out_features=self.texts.size(-1)),
+                nn.Dropout(hparams['text_dropout'])
+                )
+            else: 
+                self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
             self.texts = self.texts.float()
         
         self.freeze_bn()
@@ -273,34 +279,16 @@ def Featurizer(input_shape, hparams):
         raise NotImplementedError(f"Input shape {input_shape} is not supported")
 
 def fea_proj(hparams, out_dim):
-    if hparams['dataset'] == "OfficeHome":
+    if hparams['dataset'] == "DomainNet":
         dropout = nn.Dropout(0.25)
         hparams['hidden_size'] = 1024
+        hparams['dim'] = 512
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
-                      hparams['hidden_size']),
+                      hparams['dim']),
             dropout,
-            nn.Linear(hparams['hidden_size'],
-                      hparams['out_dim']),
-        )
-    elif hparams['dataset'] == "DomainNet":
-        dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
-        hparams['out_dim'] = out_dim
-        fea_proj = nn.Sequential(
-            nn.Linear(hparams['hidden_size'],
-                      hparams['hidden_size']),
-            dropout,
-            nn.Linear(hparams['hidden_size'],
-                      hparams['out_dim']),
-        )
-    elif hparams['dataset'] == "PACS":
-        dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
-        hparams['out_dim'] = out_dim
-        fea_proj = nn.Sequential(
-            nn.Linear(hparams['hidden_size'],
+            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     elif hparams['dataset'] == "TerraIncognita":
@@ -311,7 +299,7 @@ def fea_proj(hparams, out_dim):
             nn.Linear(hparams['hidden_size'],
                       hparams['out_dim']),
         )
-    elif hparams['dataset'] == "VLCS":
+    elif hparams['dataset'] == "OfficeHome":
         dropout = nn.Dropout(0.25)
         hparams['hidden_size'] = 1024
         hparams['out_dim'] = out_dim
@@ -319,6 +307,23 @@ def fea_proj(hparams, out_dim):
             nn.Linear(hparams['hidden_size'],
                       hparams['hidden_size']),
             dropout,
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "VLCS":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['dim'] = 256
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
+            nn.Linear(hparams['hidden_size'],
+                      hparams['out_dim']),
+        )
+    elif hparams['dataset'] == "PACS":
+        dropout = nn.Dropout(0.25)
+        hparams['hidden_size'] = 1024
+        hparams['out_dim'] = out_dim
+        fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
                       hparams['out_dim']),
         )

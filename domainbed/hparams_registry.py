@@ -22,6 +22,7 @@ def _hparams(algorithm, dataset, random_state):
     # hparams["scheduler"] = ("const", "const")
     hparams["optimizer"] = ("adam", "adam")
     hparams["CLIP"] = (True, True)
+    hparams["text_dropout"] = (0.25, 0.25)
 
     hparams["Linear_cls"] = (False, False)
     hparams["cls_w"] = (0.1, 0.1)
