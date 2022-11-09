@@ -59,7 +59,8 @@ def main():
     parser.add_argument("--show", action="store_true", help="Show args and hparams w/o run")
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--cls_w", type=float, default=0.1)
-    parser.add_argument("--text_dropout", type=float, default=0.25)
+    parser.add_argument("--resnet_dropout", type=float, default=0.1)
+    parser.add_argument("--weight_decay", type=float, default=1e-6)
     parser.add_argument(
         "--evalmode",
         default="fast",
@@ -75,11 +76,14 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
-
+    
+    hparams['lr'] = args.lr
     if hparams["CLIP"]:
         hparams["lr"] = 1e-6
     hparams['cls_w'] = args.cls_w
-    hparams['text_dropout'] = args.text_dropout
+    
+    hparams['resnet_dropout'] = args.resnet_dropout
+    hparams['weight_decay'] = args.weight_decay
 
     # setup debug
     if args.debug:

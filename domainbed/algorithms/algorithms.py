@@ -171,7 +171,7 @@ class Contrast(Algorithm):
             logits_per_image, image_pred = self.predict(all_x)
             cls_loss = self.cerition(image_pred, all_y)
             contrast_loss = self.cerition(logits_per_image, all_y)
-            loss = contrast_loss + self.hparams['cls_w'] * cls_loss
+            loss = self.hparams['contrast_w'] * contrast_loss + self.hparams['cls_w'] * cls_loss
         else:
             logits_per_image = self.predict(all_x)
             contrast_loss = self.cerition(logits_per_image, all_y)

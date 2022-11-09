@@ -83,14 +83,10 @@ class CLIP(nn.Module):
             
             self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
             self.network.fc = Identity()
-            if hparams['text_dropout']:
-                self.extension = nn.Sequential(
-                nn.Linear(in_features=2048, out_features=self.texts.size(-1)),
-                nn.Dropout(hparams['text_dropout'])
-                )
-            else: 
-                self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+            self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+
             self.texts = self.texts.float()
+            self.dropout = nn.Dropout(hparams["resnet_dropout"])
         
         self.freeze_bn()
 
@@ -99,7 +95,7 @@ class CLIP(nn.Module):
         if self.hparams["CLIP"]:
             image_features = self.network.encode_image(x)
         else:
-            image_features = self.network(x)
+            image_features = self.dropout(self.network(x))
             image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
@@ -313,18 +309,25 @@ def fea_proj(hparams, out_dim):
     elif hparams['dataset'] == "VLCS":
         dropout = nn.Dropout(0.25)
         hparams['hidden_size'] = 1024
-        hparams['dim'] = 256
+        hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
+                      hparams['dim']),
+            dropout,
+            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     elif hparams['dataset'] == "PACS":
         dropout = nn.Dropout(0.25)
         hparams['hidden_size'] = 1024
+        hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
+                      hparams['dim']),
+            dropout,
+            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     else:

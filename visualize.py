@@ -2,11 +2,10 @@ import argparse
 from distutils.util import strtobool
 from glob import glob
 from re import split
-from time import pthread_getcpuclockid
 import torch
 from domainbed.algorithms.algorithms import ERM, Contrast
-from domainbed.networks import CLIP
-from domainbed.lib import misc, utils
+from clip.model import CLIP
+import numpy
 from domainbed.datasets import datasets
 import matplotlib.pyplot as pyplot
 from tqdm import tqdm
@@ -28,17 +27,15 @@ def main():
     parser.add_argument("--domain", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
     parser.add_argument("--CLIP", type=strtobool, default=False)
     args = parser.parse_args()
-
-    timestamp = misc.timestamp()
     
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
-
     dataset = vars(datasets)[output[1]](args.data_dir)
     class_name = dataset.datasets[0].classes
 
     for pth in glob(args.output_dir + "/*.pth"):
         model = torch.load(pth)
+        # numpy.save(args.output_dir + "/" + "text_vector.npy", model.texts.cpu().numpy())
         model.eval()
         sum = None
         targets = None
@@ -66,11 +63,11 @@ def main():
 
                 for data, target in tqdm(test_loader):
                     data = data.to(device)
-                    if isinstance(net, CLIP):
+                    if isinstance(net.network, CLIP):
                         features = net.network.encode_image(data)
                     else:
                         features = net(data)
-                    if isinstance(model, Contrast):
+                    if isinstance(model, Contrast) and not isinstance(net.network, CLIP):
                         features = features[1] # features = (image_text logits, image_features)
                     if sum != None:
                         sum = torch.cat((sum, features), 0)
@@ -90,9 +87,20 @@ def main():
         for i in range(X.shape[0]):
             phi[targets[i]] += torch.norm(torch.from_numpy(X[i] - center_avg[targets[i]].numpy()))
         phi = phi / class_sum
+
         print(str(phi.mean()))
         pyplot.scatter(X[:, 0], X[:, 1], 1, targets)
         pyplot.savefig(args.output_dir + "/" + str(args.domain)+ name[-3] + str(phi.mean()) + ".png")
+
+        sum = sum.cpu()
+        class_sum = torch.zeros(targets.unique().size())
+        center_avg = torch.zeros([class_sum.size(0), sum.size(1)])
+        for i in range(sum.shape[0]):
+            class_sum[targets[i]] += 1
+            center_avg[targets[i]] += sum[i]
+        for i in range(class_sum.size(0)):
+            center_avg[i] /= class_sum[i]
+        numpy.save(args.output_dir + "/" + name[-3] + "_image_vector.npy", center_avg.cpu().numpy())
         # utils.plot(X, targets, save=args.output_dir + "/" + name[-3] + ".png")
 
 if __name__ == "__main__":

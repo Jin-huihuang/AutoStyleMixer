@@ -98,7 +98,7 @@ class LossValley(SWADBase):
             untilmin_segment_swa = self.converge_Q[min_idx]  # until-min segment swa.
             if min_idx == 0:
                 self.converge_step = self.converge_Q[0].end_step
-                self.final_model = swa_utils.AveragedModel(untilmin_segment_swa, use_buffers=True)
+                self.final_model = swa_utils.AveragedModel(untilmin_segment_swa, use_buffers=self.use_buffers)
 
                 th_base = np.mean([model.end_loss for model in self.converge_Q])
                 self.threshold = th_base * (1.0 + self.tolerance_ratio)
