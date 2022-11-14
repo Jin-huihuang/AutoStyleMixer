@@ -83,7 +83,15 @@ class CLIP(nn.Module):
             
             self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
             self.network.fc = Identity()
-            self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+            # self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+            dropout = nn.Dropout(0.25)
+            self.extension = nn.Sequential(
+            nn.Linear(2048,
+                      2048),
+            dropout,
+            nn.Linear(2048,
+                      self.texts.size(-1)),
+        )
 
             self.texts = self.texts.float()
             self.dropout = nn.Dropout(hparams["resnet_dropout"])
@@ -290,6 +298,7 @@ def fea_proj(hparams, out_dim):
     elif hparams['dataset'] == "TerraIncognita":
         dropout = nn.Dropout(0.25)
         hparams['hidden_size'] = 1024
+        hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],

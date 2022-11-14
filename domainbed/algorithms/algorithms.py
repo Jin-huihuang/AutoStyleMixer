@@ -192,6 +192,7 @@ class Contrast(Algorithm):
         logits_per_image, image_pred = self.network(images)
         if self.hparams["Linear_cls"]:
             image_pred = self.classifier(image_pred)
+            # image_pred = self.classifier(image_pred.detach())
             return logits_per_image, image_pred
         else:
             return logits_per_image

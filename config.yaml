@@ -11,6 +11,6 @@ test_batchsize: 128
 indomain_test: False  # use indomain test split or not
 
 # Contrast settings
-Linear_cls: False
-CLIP: True
+Linear_cls: True
+CLIP: False
 backbone: RN50 # 'RN50', 'ViT'
