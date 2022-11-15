@@ -69,7 +69,8 @@ class CLIP(nn.Module):
         super(CLIP, self).__init__()
 
         self.hparams = hparams
-        CLIP_Net, self.preprocess = clip.load(model_select[hparams['backbone'] + '_CLIP'], device="cuda", jit=False)
+        
+        CLIP_Net, self.preprocess = clip.load(hparams["Text"], device="cuda", jit=False)
 
         if hparams["algorithm"] != 'ERM':
             self.texts = self.to_texts_features(CLIP_Net, class_token)
@@ -80,21 +81,27 @@ class CLIP(nn.Module):
         else: 
             del CLIP_Net
             torch.cuda.empty_cache()
-            
-            self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
-            self.network.fc = Identity()
-            # self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
-            dropout = nn.Dropout(0.25)
-            self.extension = nn.Sequential(
-            nn.Linear(2048,
-                      2048),
-            dropout,
-            nn.Linear(2048,
-                      self.texts.size(-1)),
-        )
+            if hparams["backbone"] == 'ViT':
+                self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"])
+                self.network.heads = Identity()
+                self.extension = nn.Linear(in_features=768, out_features=self.texts.size(-1))
+            elif hparams["backbone"] == 'RN50':
+                self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
+                self.network.fc = Identity()
+                self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+        
+        hparams['hidden_size'] = self.texts.size(-1)
+        #     dropout = nn.Dropout(0.25)
+        #     self.extension = nn.Sequential(
+        #     nn.Linear(2048,
+        #               2048),
+        #     dropout,
+        #     nn.Linear(2048,
+        #               self.texts.size(-1)),
+        # )
 
-            self.texts = self.texts.float()
-            self.dropout = nn.Dropout(hparams["resnet_dropout"])
+        self.texts = self.texts.float()
+        self.dropout = nn.Dropout(hparams["resnet_dropout"])
         
         self.freeze_bn()
 
@@ -139,7 +146,7 @@ class CLIP(nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
-
+    @torch.no_grad()
     def to_texts_features(self, CLIP_Net, class_token):
         text_features = CLIP_Net.encode_text(class_token)
         text_features = text_features / text_features.norm(dim=1, keepdim=True)
@@ -285,7 +292,6 @@ def Featurizer(input_shape, hparams):
 def fea_proj(hparams, out_dim):
     if hparams['dataset'] == "DomainNet":
         dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
         hparams['dim'] = 512
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
@@ -297,7 +303,6 @@ def fea_proj(hparams, out_dim):
         )
     elif hparams['dataset'] == "TerraIncognita":
         dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
         hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
@@ -306,7 +311,6 @@ def fea_proj(hparams, out_dim):
         )
     elif hparams['dataset'] == "OfficeHome":
         dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
@@ -317,7 +321,6 @@ def fea_proj(hparams, out_dim):
         )
     elif hparams['dataset'] == "VLCS":
         dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
         hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
@@ -329,7 +332,6 @@ def fea_proj(hparams, out_dim):
         )
     elif hparams['dataset'] == "PACS":
         dropout = nn.Dropout(0.25)
-        hparams['hidden_size'] = 1024
         hparams['dim'] = 128
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(

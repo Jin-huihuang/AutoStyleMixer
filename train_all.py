@@ -61,6 +61,7 @@ def main():
     parser.add_argument("--cls_w", type=float, default=0.1)
     parser.add_argument("--resnet_dropout", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=1e-6)
+    parser.add_argument("--Text", type=str, default='RN50')
     parser.add_argument(
         "--evalmode",
         default="fast",
@@ -81,6 +82,7 @@ def main():
     if hparams["CLIP"]:
         hparams["lr"] = 1e-6
     hparams['cls_w'] = args.cls_w
+    hparams['Text'] = args.Text
     
     hparams['resnet_dropout'] = args.resnet_dropout
     hparams['weight_decay'] = args.weight_decay

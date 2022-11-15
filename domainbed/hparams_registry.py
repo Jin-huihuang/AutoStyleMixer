@@ -23,6 +23,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["optimizer"] = ("adam", "adam")
     hparams["CLIP"] = (True, True)
     hparams["text_dropout"] = (0.25, 0.25)
+    hparams["hidden_size"] = (512, 512)
 
     hparams["Linear_cls"] = (False, False)
     hparams["cls_w"] = (0.1, 0.1)
