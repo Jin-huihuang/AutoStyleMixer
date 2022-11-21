@@ -2,6 +2,7 @@
 
 import torch
 import timm
+from torch.cuda.amp import autocast
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
@@ -89,6 +90,10 @@ class CLIP(nn.Module):
                 self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
                 self.network.fc = Identity()
                 self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+            elif hparams['backbone'] == 'Reg':
+                self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
+                self.network.fc = Identity()
+                self.extension = nn.Linear(in_features=3024, out_features=self.texts.size(-1))
         
         hparams['hidden_size'] = self.texts.size(-1)
         #     dropout = nn.Dropout(0.25)
@@ -146,6 +151,7 @@ class CLIP(nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
+
     @torch.no_grad()
     def to_texts_features(self, CLIP_Net, class_token):
         text_features = CLIP_Net.encode_text(class_token)
@@ -157,15 +163,26 @@ class ResNet(torch.nn.Module):
 
     def __init__(self, input_shape, hparams, network=None):
         super(ResNet, self).__init__()
+        self.hparams = hparams
+
         if hparams["resnet18"]:
             if network is None:
                 self.network = torchvision.models.resnet18(pretrained=hparams["pretrained"])
-            
             self.n_outputs = 512
+            self.network.fc = Identity()
+        elif hparams["backbone"] == 'ViT':
+            self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"]).float()
+            self.n_outputs = 768
+            self.network.heads = Identity()
+        elif hparams['backbone'] == 'Reg':
+            self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
+            self.n_outputs = 3024
+            self.network.fc = Identity()
         else:
             if network is None:
                 self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
             self.n_outputs = 2048
+            self.network.fc = Identity()
 
         # adapt number of channels
         nc = input_shape[0]
@@ -181,9 +198,7 @@ class ResNet(torch.nn.Module):
 
         # save memory
         # del self.network.fc
-        self.network.fc = Identity()
 
-        self.hparams = hparams
         self.dropout = nn.Dropout(hparams["resnet_dropout"])
         self.freeze_bn()
 

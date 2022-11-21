@@ -28,6 +28,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["Linear_cls"] = (False, False)
     hparams["cls_w"] = (0.1, 0.1)
     hparams['contrast_w'] = (1, 1)
+    hparams["epsilon"] = (0, 0)
     hparams["backbone"] = ("RN50", "RN50")
     hparams["freeze_bn"] = (True, True)
     hparams["pretrained"] = (True, True)  # only for ResNet
