@@ -34,6 +34,7 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
             else: 
                 logits, image_pred = algorithm.predict(x)
                 loss = F.cross_entropy(logits, y).item() + F.cross_entropy(image_pred, y).item()
+                # loss = F.cross_entropy(logits, y).item() + F.cross_entropy(image_pred, y).item()
 
         B = len(x)
         losssum += loss * B

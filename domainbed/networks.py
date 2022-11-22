@@ -96,14 +96,6 @@ class CLIP(nn.Module):
                 self.extension = nn.Linear(in_features=3024, out_features=self.texts.size(-1))
         
         hparams['hidden_size'] = self.texts.size(-1)
-        #     dropout = nn.Dropout(0.25)
-        #     self.extension = nn.Sequential(
-        #     nn.Linear(2048,
-        #               2048),
-        #     dropout,
-        #     nn.Linear(2048,
-        #               self.texts.size(-1)),
-        # )
 
         self.texts = self.texts.float()
         self.dropout = nn.Dropout(hparams["resnet_dropout"])
@@ -118,12 +110,12 @@ class CLIP(nn.Module):
             image_features = self.dropout(self.network(x))
             image_features = self.extension(image_features)
         # normalized features
-        image_features = image_features / image_features.norm(dim=1, keepdim=True)
+        image_fea = image_features / image_features.norm(dim=1, keepdim=True)
         # text_features = self.texts
 
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
-        logits_per_image = image_features @ self.texts.t()
+        logits_per_image = image_fea @ self.texts.t()
 
         return logits_per_image, image_features
 
@@ -312,7 +304,7 @@ def fea_proj(hparams, out_dim):
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
                       hparams['dim']),
-            dropout,
+            # dropout,
             nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
@@ -340,9 +332,6 @@ def fea_proj(hparams, out_dim):
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
-                      hparams['dim']),
-            dropout,
-            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     elif hparams['dataset'] == "PACS":
@@ -351,9 +340,6 @@ def fea_proj(hparams, out_dim):
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
-                      hparams['dim']),
-            dropout,
-            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     else:
