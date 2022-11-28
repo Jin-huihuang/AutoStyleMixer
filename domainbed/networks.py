@@ -110,12 +110,12 @@ class CLIP(nn.Module):
             image_features = self.dropout(self.network(x))
             image_features = self.extension(image_features)
         # normalized features
-        image_fea = image_features / image_features.norm(dim=1, keepdim=True)
+        image_features = image_features / image_features.norm(dim=1, keepdim=True)
         # text_features = self.texts
 
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
-        logits_per_image = image_fea @ self.texts.t()
+        logits_per_image = image_features @ self.texts.t()
 
         return logits_per_image, image_features
 
@@ -298,13 +298,13 @@ def Featurizer(input_shape, hparams):
 
 def fea_proj(hparams, out_dim):
     if hparams['dataset'] == "DomainNet":
-        dropout = nn.Dropout(0.25)
-        hparams['dim'] = 512
+        dropout = nn.Dropout(0.1)
+        hparams['dim'] = 1024
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
                       hparams['dim']),
-            # dropout,
+            dropout,
             nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )

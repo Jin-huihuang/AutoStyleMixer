@@ -40,7 +40,7 @@ def num_environments(dataset_name):
 class MultipleDomainDataset:
     N_STEPS = 5001  # Default, subclasses may override
     CHECKPOINT_FREQ = 100  # Default, subclasses may override
-    N_WORKERS = 12  # Default, subclasses may override
+    N_WORKERS = 4  # Default, subclasses may override
     ENVIRONMENTS = None  # Subclasses should override
     INPUT_SHAPE = None  # Subclasses should override
 
@@ -239,7 +239,7 @@ class DomainNet(MultipleEnvironmentImageFolder):
 
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 200
-    N_STEPS = 2001 ###################
+
     ENVIRONMENTS = ["A", "C", "P", "R"]
 
     def __init__(self, root):
