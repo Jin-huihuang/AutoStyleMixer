@@ -108,7 +108,7 @@ class CLIP(nn.Module):
             image_features = self.network.encode_image(x)
         else:
             image_features = self.network(x)
-            #########################################################
+            ###########################test
             image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
