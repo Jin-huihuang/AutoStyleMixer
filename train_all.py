@@ -2,6 +2,7 @@ import argparse
 import collections
 from distutils.util import strtobool
 import random
+from re import split
 import sys
 from pathlib import Path
 import clip
@@ -174,6 +175,9 @@ def main():
 
     # class_name to class_token
     class_name = dataset.datasets[0].classes
+    for i in range(len(class_name)):
+        class_name[i] = class_name[i].replace('_', ' ')
+
     class_token = torch.cat([clip.tokenize(f"an image of a {c}") for c in class_name]).to(device)
 
     for test_env in args.test_envs:

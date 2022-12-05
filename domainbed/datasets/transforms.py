@@ -1,8 +1,6 @@
 from torchvision import transforms as T
 import clip
 
-# model, preprocess = clip.load("RN50", device="cpu")
-
 basic = T.Compose(
     [
         T.Resize((224, 224)),

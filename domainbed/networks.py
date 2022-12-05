@@ -107,7 +107,8 @@ class CLIP(nn.Module):
         if self.hparams["CLIP"]:
             image_features = self.network.encode_image(x)
         else:
-            image_features = self.dropout(self.network(x))
+            image_features = self.network(x)
+            #########################################################
             image_features = self.extension(image_features)
         # normalized features
         image_features = image_features / image_features.norm(dim=1, keepdim=True)
@@ -117,7 +118,7 @@ class CLIP(nn.Module):
         # logit_scale = self.logit_scale.exp()
         logits_per_image = image_features @ self.texts.t()
 
-        return logits_per_image, image_features
+        return logits_per_image, self.dropout(image_features)
 
     def forward_features(self, x):
         """Encode x into a feature vector of size n_outputs."""
@@ -299,7 +300,7 @@ def Featurizer(input_shape, hparams):
 def fea_proj(hparams, out_dim):
     if hparams['dataset'] == "DomainNet":
         dropout = nn.Dropout(0.1)
-        hparams['dim'] = 1024
+        hparams['dim'] = 512
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
@@ -340,6 +341,8 @@ def fea_proj(hparams, out_dim):
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
             nn.Linear(hparams['hidden_size'],
+                      hparams['dim']),
+            nn.Linear(hparams['dim'],
                       hparams['out_dim']),
         )
     else:
