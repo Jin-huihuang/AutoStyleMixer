@@ -72,6 +72,8 @@ class CLIP(nn.Module):
         self.hparams = hparams
         
         CLIP_Net, self.preprocess = clip.load(hparams["Text"], device="cuda", jit=False)
+        self.logit_scale = CLIP_Net.logit_scale
+        # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
         if hparams["algorithm"] != 'ERM':
             self.texts = self.to_texts_features(CLIP_Net, class_token)
@@ -116,6 +118,7 @@ class CLIP(nn.Module):
 
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
+        # logits_per_image = image_features @ self.texts.t() * logit_scale
         logits_per_image = image_features @ self.texts.t()
 
         return logits_per_image, self.dropout(image_features)

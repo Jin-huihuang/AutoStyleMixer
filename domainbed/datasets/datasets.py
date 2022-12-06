@@ -63,10 +63,11 @@ class Debug(MultipleDomainDataset):
         self.input_shape = self.INPUT_SHAPE
         self.num_classes = 2
         self.datasets = []
+        self.environments = self.ENVIRONMENTS
         for _ in [0, 1, 2]:
             self.datasets.append(
                 TensorDataset(
-                    torch.randn(16, *self.INPUT_SHAPE),
+                    torch.randn(16, *self.input_shape),
                     torch.randint(0, self.num_classes, (16,)),
                 )
             )

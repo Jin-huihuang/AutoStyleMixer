@@ -90,6 +90,7 @@ def main():
 
     # setup debug
     if args.debug:
+        hparams['batch_size'] = 1
         args.checkpoint_freq = 5
         args.steps = 10
         args.name += "_debug"
