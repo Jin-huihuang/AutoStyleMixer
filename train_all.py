@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import clip
 
+import tablib
 import numpy as np
 import PIL
 import torch
@@ -210,6 +211,15 @@ def main():
         row = [f"{acc:.3%}" for acc in row]
         table.add_row([key] + row)
     logger.nofmt(table)
+
+    # export xlsx
+    data = tablib.Dataset(headers=table.field_names)
+    for row in table._rows:
+        data.append(row)
+        
+    data.title = args.unique_name
+    with open('results.xlsx', 'wb') as f:
+        f.write(data.export('xlsx'))
 
 
 if __name__ == "__main__":

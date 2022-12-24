@@ -161,7 +161,7 @@ class Contrast(Algorithm):
             weight_decay=self.hparams["weight_decay"],
         )
         self.cerition = CrossEntropyLabelSmooth(num_classes, hparams["epsilon"])
-        self.ct_loss = nn.CrossEntropyLoss()
+        self.ce_loss = nn.CrossEntropyLoss()
 
 
     def update(self, x, y, **kwargs):
@@ -176,10 +176,10 @@ class Contrast(Algorithm):
             loss = self.hparams['contrast_w'] * contrast_loss + self.hparams['cls_w'] * cls_loss
         else:
             logits_per_image = self.predict(all_x)
-            contrast_loss = self.ct_loss(logits_per_image, all_y)
+            contrast_loss = self.ce_loss(logits_per_image, all_y)
             loss = contrast_loss
 
-        # CLIP model is float16
+        # the parameters of CLIP model contain float16 and float32
         
         loss.backward()
         if self.hparams["CLIP"]:

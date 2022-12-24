@@ -75,7 +75,7 @@ class CLIP(nn.Module):
         self.logit_scale = CLIP_Net.logit_scale
         # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
-        if hparams["algorithm"] != 'ERM':
+        if hparams["algorithm"] == 'Contrast':
             self.texts = self.to_texts_features(CLIP_Net, class_token)
 
         if hparams["CLIP"]:
@@ -96,10 +96,12 @@ class CLIP(nn.Module):
                 self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
                 self.network.fc = Identity()
                 self.extension = nn.Linear(in_features=3024, out_features=self.texts.size(-1))
-        
-        hparams['hidden_size'] = self.texts.size(-1)
+        if hparams['algorithm'] == 'Contrast':
+            self.texts = self.texts.float()
+            hparams['hidden_size'] = self.texts.size(-1)
+        else:
+            hparams['hidden_size'] = self.network.visual.output_dim
 
-        self.texts = self.texts.float()
         self.dropout = nn.Dropout(hparams["resnet_dropout"])
         
         self.freeze_bn()
@@ -302,7 +304,7 @@ def Featurizer(input_shape, hparams):
 
 def fea_proj(hparams, out_dim):
     if hparams['dataset'] == "DomainNet":
-        dropout = nn.Dropout(0.1)
+        dropout = nn.Dropout(0.25)
         hparams['dim'] = 512
         hparams['out_dim'] = out_dim
         fea_proj = nn.Sequential(
