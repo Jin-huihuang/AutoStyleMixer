@@ -59,11 +59,7 @@ def main():
     parser.add_argument("--tb_freq", default=10)
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
     parser.add_argument("--show", action="store_true", help="Show args and hparams w/o run")
-    parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--cls_w", type=float, default=0.1)
-    parser.add_argument("--resnet_dropout", type=float, default=0.1)
-    parser.add_argument("--weight_decay", type=float, default=1e-6)
-    parser.add_argument("--Text", type=str, default='RN50')
     parser.add_argument(
         "--evalmode",
         default="fast",
@@ -79,15 +75,6 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
-    
-    hparams['lr'] = args.lr
-    if hparams["CLIP"]:
-        hparams["lr"] = 1e-6
-    hparams['cls_w'] = args.cls_w
-    hparams['Text'] = args.Text
-    
-    hparams['resnet_dropout'] = args.resnet_dropout
-    hparams['weight_decay'] = args.weight_decay
 
     # setup debug
     if args.debug:
@@ -218,7 +205,7 @@ def main():
         data.append(row)
         
     data.title = args.unique_name
-    with open('results.xlsx', 'wb') as f:
+    with open('%s/results.xlsx' % args.out_dir, 'wb') as f:
         f.write(data.export('xlsx'))
 
 

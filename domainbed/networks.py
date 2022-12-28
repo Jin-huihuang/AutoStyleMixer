@@ -10,10 +10,8 @@ import clip
 from domainbed.lib import wide_resnet
 
 model_select = {
-    'RN50': 'resnet50',
-    'ViT': 'vit_b_16',
-    'RN50_CLIP': 'RN50',
-    'ViT_CLIP': 'ViT-B/16',
+    'RN50': 'RN50',
+    'ViT': 'ViT-B/16',
 }
 class Identity(nn.Module):
     """An identity layer"""
@@ -70,8 +68,10 @@ class CLIP(nn.Module):
         super(CLIP, self).__init__()
 
         self.hparams = hparams
-        
-        CLIP_Net, self.preprocess = clip.load(hparams["Text"], device="cuda", jit=False)
+        if hparams['CLIP']:
+            CLIP_Net, self.preprocess = clip.load(model_select[hparams['backbone']], device="cuda", jit=False)
+        else:
+            CLIP_Net, self.preprocess = clip.load(hparams['Text'], device="cuda", jit=False)
         self.logit_scale = CLIP_Net.logit_scale
         # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
@@ -121,7 +121,8 @@ class CLIP(nn.Module):
         # cosine similarity as logits
         # logit_scale = self.logit_scale.exp()
         # logits_per_image = image_features @ self.texts.t() * logit_scale
-        logits_per_image = image_features @ self.texts.t()
+        with autocast():
+            logits_per_image = image_features @ self.texts.t()
 
         return logits_per_image, self.dropout(image_features)
 

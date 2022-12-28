@@ -87,7 +87,7 @@ class ERM(Algorithm):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
         if hparams["CLIP"]:
             self.featurizer = networks.CLIP(input_shape, self.hparams)
-            self.classifier = nn.Linear(1024, num_classes)
+            self.classifier = nn.Linear(hparams['hidden_size'], num_classes)
         else:
             self.featurizer = networks.Featurizer(input_shape, self.hparams)
             self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
@@ -127,12 +127,12 @@ class ERM(Algorithm):
         if self.hparams["CLIP"]:
             params = [
                     {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"], 'eps': 1e-5}
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"], 'eps': 1e-5}
                 ]
         else:
             params = [
                     {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 1.0 * self.hparams["lr"]}
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
                 ]
         return params
 
@@ -172,7 +172,7 @@ class Contrast(Algorithm):
         if self.hparams["Linear_cls"]:
             logits_per_image, image_pred = self.predict(all_x)
             cls_loss = self.cerition(image_pred, all_y)
-            contrast_loss = self.ct_loss(logits_per_image, all_y)
+            contrast_loss = self.ce_loss(logits_per_image, all_y)
             loss = self.hparams['contrast_w'] * contrast_loss + self.hparams['cls_w'] * cls_loss
         else:
             logits_per_image = self.predict(all_x)
@@ -193,7 +193,8 @@ class Contrast(Algorithm):
     def predict(self, images):
         logits_per_image, image_pred = self.network(images)
         if self.hparams["Linear_cls"]:
-            image_pred = self.classifier(image_pred)
+            with autocast():
+                image_pred = self.classifier(image_pred)
             # image_pred = self.classifier(image_pred.detach())
             return logits_per_image, image_pred
         else:
@@ -204,12 +205,12 @@ class Contrast(Algorithm):
             if self.hparams["CLIP"]:
                 params = [
                         {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                        {'params': self.classifier.parameters(), 'lr': 1.0 * self.hparams["lr"], 'eps': 1e-5}
+                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"], 'eps': 1e-5}
                     ]
             else:
                 params = [
                         {'params': self.network.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+                        {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
                     ]
         else:
             params = [
