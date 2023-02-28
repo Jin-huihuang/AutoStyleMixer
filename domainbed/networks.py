@@ -68,34 +68,24 @@ class CLIP(nn.Module):
         super(CLIP, self).__init__()
 
         self.hparams = hparams
-        if hparams['CLIP']:
-            CLIP_Net, self.preprocess = clip.load(model_select[hparams['backbone']], device="cuda", jit=False)
-        else:
-            CLIP_Net, self.preprocess = clip.load(hparams['Text'], device="cuda", jit=False)
-        self.logit_scale = CLIP_Net.logit_scale
         # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-
-        if hparams["algorithm"] == 'Contrast':
-            self.texts = self.to_texts_features(CLIP_Net, class_token)
-
-        if hparams["CLIP"]:
-            self.network = CLIP_Net
-            self.logit_scale = self.network.logit_scale
-        else: 
-            del CLIP_Net
-            torch.cuda.empty_cache()
-            if hparams["backbone"] == 'ViT':
+        if hparams["backbone"] == 'ViT':
+            if hparams["CLIP"]:
+                CLIP_Net, self.preprocess = clip.load(model_select[hparams['backbone']], device="cuda", jit=False)
+                self.network = CLIP_Net
+                self.logit_scale = self.network.logit_scale
+            else:
                 self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"])
                 self.network.heads = Identity()
                 self.extension = nn.Linear(in_features=768, out_features=self.texts.size(-1))
-            elif hparams["backbone"] == 'RN50':
-                self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
-                self.network.fc = Identity()
-                self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
-            elif hparams['backbone'] == 'Reg':
-                self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
-                self.network.fc = Identity()
-                self.extension = nn.Linear(in_features=3024, out_features=self.texts.size(-1))
+        elif hparams["backbone"] == 'RN50':
+            self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
+            self.network.fc = Identity()
+            self.extension = nn.Linear(in_features=2048, out_features=self.texts.size(-1))
+        elif hparams['backbone'] == 'Reg':
+            self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
+            self.network.fc = Identity()
+            self.extension = nn.Linear(in_features=3024, out_features=self.texts.size(-1))
         if hparams['algorithm'] == 'Contrast':
             self.texts = self.texts.float()
             hparams['hidden_size'] = self.texts.size(-1)
@@ -105,6 +95,7 @@ class CLIP(nn.Module):
         self.dropout = nn.Dropout(hparams["resnet_dropout"])
         
         self.freeze_bn()
+        torch.cuda.empty_cache()
 
     def forward(self, x):
         """Encode x into a feature vector of size n_outputs."""
@@ -170,9 +161,11 @@ class ResNet(torch.nn.Module):
             self.n_outputs = 512
             self.network.fc = Identity()
         elif hparams["backbone"] == 'ViT':
-            self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"]).float()
-            self.n_outputs = 768
-            self.network.heads = Identity()
+            # self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"]).float()
+            self.network = timm.create_model("vit_small_patch16_224", pretrained=True)
+            self.n_outputs = self.network.embed_dim
+            # self.network.heads = Identity()
+
         elif hparams['backbone'] == 'Reg':
             self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
             self.n_outputs = 3024
@@ -183,27 +176,16 @@ class ResNet(torch.nn.Module):
             self.n_outputs = 2048
             self.network.fc = Identity()
 
-        # adapt number of channels
-        nc = input_shape[0]
-        if nc != 3:
-            tmp = self.network.conv1.weight.data.clone()
-
-            self.network.conv1 = nn.Conv2d(
-                nc, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False
-            )
-
-            for i in range(nc):
-                self.network.conv1.weight.data[:, i, :, :] = tmp[:, i % 3, :, :]
-
-        # save memory
-        # del self.network.fc
-
         self.dropout = nn.Dropout(hparams["resnet_dropout"])
         self.freeze_bn()
 
     def forward(self, x):
         """Encode x into a feature vector of size n_outputs."""
-        return self.dropout(self.network(x))
+        if self.hparams["backbone"] != 'ViT':
+            return self.dropout(self.network(x))
+        x = self.network.forward_features(x)
+
+        return x
 
     def train(self, mode=True):
         """
@@ -296,8 +278,6 @@ def Featurizer(input_shape, hparams):
         return MNIST_CNN(input_shape)
     elif input_shape[1:3] == (32, 32):
         return wide_resnet.Wide_ResNet(input_shape, 16, 2, 0.0)
-    elif hparams["CLIP"]:
-        return CLIP(input_shape, hparams)
     elif input_shape[1:3] == (224, 224):
         return ResNet(input_shape, hparams)
     else:

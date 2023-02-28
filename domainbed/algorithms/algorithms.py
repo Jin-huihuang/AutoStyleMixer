@@ -4,6 +4,7 @@ import copy
 from torch.cuda.amp import autocast
 from typing import List
 from clip.model import convert_weights
+from torch.autograd import Function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -83,58 +84,145 @@ class ERM(Algorithm):
     Empirical Risk Minimization (ERM)
     """
 
-    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
+    def __init__(self, input_shape, num_classes, num_domains, hparams, gamma=1, **kwargs):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
-        if hparams["CLIP"]:
-            self.featurizer = networks.CLIP(input_shape, self.hparams)
-            self.classifier = nn.Linear(hparams['hidden_size'], num_classes)
-        else:
-            self.featurizer = networks.Featurizer(input_shape, self.hparams)
-            self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
+        if self.hparams["Disentangled"]:
+            self.D_classifier = Discriminator(self.featurizer.n_outputs, self.featurizer.n_outputs, domain_num=num_domains)
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
             lr=self.hparams["lr"],
             weight_decay=self.hparams["weight_decay"],
         )
+        self.lambda_scheduler = LambdaSheduler(gamma, kwargs['n_steps'])
 
     def update(self, x, y, **kwargs):
+        domain_label = []
+        for index, (domain) in enumerate(y):
+            domain_label.append(torch.full_like(domain, index))
+        
         all_x = torch.cat(x)
         all_y = torch.cat(y)
-        self.optimizer.zero_grad()
+        all_domain = torch.cat(domain_label)
+        self.optimizer.zero_grad() 
+        if self.hparams["Disentangled"]:
+            lamb = self.hparams['cls_d']
+            if self.hparams["use_lambda_scheduler"]:
+                lamb = self.lambda_scheduler.lamb()
+                self.lambda_scheduler.step()
+            x_cls, x_domain = self.Disentangled(all_x, lamb)
 
-        with autocast():
+            loss_cls = F.cross_entropy(x_cls, all_y)
+            loss_domain = F.cross_entropy(x_domain, all_domain)
+            loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain
+        else:
             loss = F.cross_entropy(self.predict(all_x), all_y)
         loss.backward()
-        # CLIP model is float16
-        if self.hparams["CLIP"]:
-            self.featurizer.float()
         self.optimizer.step()
-        if self.hparams["CLIP"]:
-            convert_weights(self.featurizer)
 
         return {"loss": loss.item()}
 
-    def predict(self, x):
+    def Disentangled(self, x, lamb):
+        x = self.featurizer(x)
+        class_token = x[:, 0]
+        tokens = x[:, 1:]
+        if self.hparams['mode'] == 0:
+            x_cls = class_token
+            x_domain = class_token
+        elif self.hparams['mode'] == 1:
+            x_cls = tokens.mean(dim=1)
+            x_domain = tokens.mean(dim=1)
+        elif self.hparams['mode'] == 2:
+            x_cls = class_token
+            x_domain = tokens.mean(dim=1)
+        else:
+            x_cls = tokens.mean(dim=1)
+            x_domain = class_token
         
-        if self.hparams["CLIP"]:
-            with autocast():
-                return self.classifier(self.featurizer.forward_features(x))
-        return self.network(x)
+        if self.hparams["adv"]:        
+            x_domain = ReverseLayerF.apply(x_domain, lamb)
+
+        x_cls = self.classifier(x_cls)
+        x_domain = self.D_classifier(x_domain)
+
+        return x_cls, x_domain
+
+    def predict(self, x):
+        if self.hparams["mode"] == (1,3):
+            x = self.classifier(self.featurizer(x)[:, 1:].mean(dim=1))
+        else:
+            x = self.classifier(self.featurizer(x)[:, 0])
+        return x
 
     def get_params(self):
-        if self.hparams["CLIP"]:
-            params = [
-                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"], 'eps': 1e-5}
-                ]
-        else:
-            params = [
-                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
-                ]
+        params = [
+                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+            ]
+        if self.hparams['Disentangled']:
+            params.append(
+                {'params': self.D_classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+            )
         return params
+
+class Discriminator(nn.Module):
+    def __init__(self, input_dim=256, hidden_dim=256, domain_num=4):
+        super(Discriminator, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        layers = [
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            # nn.Linear(hidden_dim, hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
+            # nn.ReLU(),
+            nn.Linear(hidden_dim, domain_num),
+            # nn.Sigmoid()
+
+            # nn.Linear(input_dim, hidden_dim),
+            # nn.ReLU(),
+            # nn.Dropout(0.5),
+            # nn.Linear(hidden_dim, 1),
+            # nn.Sigmoid()
+        ]
+        # for dep in range(1):
+        #     layers[dep * 3].weight.data.normal_(0, 0.01)
+        #     layers[dep * 3].bias.data.fill_(0.0)
+        self.layers = torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layers(x)
+
+class LambdaSheduler(nn.Module):
+    def __init__(self, gamma=1.0, max_iter=1000, **kwargs):
+        super(LambdaSheduler, self).__init__()
+        self.gamma = gamma
+        self.max_iter = max_iter
+        self.curr_iter = 0
+
+    def lamb(self):
+        p = self.curr_iter / self.max_iter
+        lamb = 2. / (1. + np.exp(-self.gamma * p)) - 1
+        return lamb
+    
+    def step(self):
+        self.curr_iter = min(self.curr_iter + 1, self.max_iter)
+
+class ReverseLayerF(Function):
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        output = grad_output.neg() * ctx.alpha
+        return output, None
 
 class Contrast(Algorithm):
     """

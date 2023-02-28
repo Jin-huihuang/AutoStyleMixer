@@ -26,11 +26,19 @@ def _hparams(algorithm, dataset, random_state):
     hparams["text_dropout"] = (0.25, 0.25)
     hparams["hidden_size"] = (512, 512)
     hparams['unlr'] = (True, True)
+    hparams["Disentangled"] = (True, True)
+    hparams["adv"] = (False, False)
+    hparams["mode"] = (0, 0)  # u denotes the class token, v denotes the global features(global average pool for all tokens except class token). 
+    # 0: u be used to predict category and domain label
+    # 1: v for category and domain label
+    # 2: u for category, v for domain label
+    # 3: u for domain label, v for category
+    hparams["use_lambda_scheduler"] = (True, True)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)
-    hparams["cls_w"] = (0.1, 0.1)
-    hparams['contrast_w'] = (1, 1)
+    hparams["cls_c"] = (0.1, 0.1)
+    hparams['cls_d'] = (1, 1)
     hparams["epsilon"] = (0, 0)
     hparams["backbone"] = ("RN50", "RN50")
     hparams["freeze_bn"] = (True, True)
@@ -53,13 +61,13 @@ def _hparams(algorithm, dataset, random_state):
     else:
         hparams["weight_decay"] = (0.0, 10 ** random_state.uniform(-6, -2))
 
-    # if algorithm in ["DANN", "CDANN"]:
-    #     if dataset not in SMALL_IMAGES:
-    #         hparams["lr_g"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
-    #         hparams["lr_d"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
-    #     else:
-    #         hparams["lr_g"] = (1e-3, 10 ** random_state.uniform(-4.5, -2.5))
-    #         hparams["lr_d"] = (1e-3, 10 ** random_state.uniform(-4.5, -2.5))
+    if algorithm in ["DANN", "CDANN"]:
+        if dataset not in SMALL_IMAGES:
+            hparams["lr_g"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
+            hparams["lr_d"] = (5e-5, 10 ** random_state.uniform(-5, -3.5))
+        else:
+            hparams["lr_g"] = (1e-3, 10 ** random_state.uniform(-4.5, -2.5))
+            hparams["lr_d"] = (1e-3, 10 ** random_state.uniform(-4.5, -2.5))
 
     #     if dataset in SMALL_IMAGES:
     #         hparams["weight_decay_g"] = (0.0, 0.0)

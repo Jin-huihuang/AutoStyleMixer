@@ -126,6 +126,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         dataset.num_classes,
         len(dataset) - len(test_envs),
         hparams,
+        n_steps=n_steps,
         **kwargs
     )
 
@@ -219,7 +220,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
             writer.add_scalars_with_prefix(summaries, step, f"{testenv_name}/summary/")
             writer.add_scalars_with_prefix(accuracies, step, f"{testenv_name}/all/")
 
-            if args.model_save and step >= args.model_save:
+            if args.save and step >= args.save:
                 ckpt_dir = args.out_dir / "checkpoints"
                 ckpt_dir.mkdir(exist_ok=True)
 

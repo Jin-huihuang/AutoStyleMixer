@@ -54,7 +54,7 @@ def main():
     )
     parser.add_argument("--test_envs", type=int, nargs="+", default=None)  # sketch in PACS
     parser.add_argument("--holdout_fraction", type=float, default=0.2)
-    parser.add_argument("--model_save", default=None, type=int, help="Model save start step")
+    parser.add_argument("--save", default=None, type=int, help="Model save start step")
     parser.add_argument("--deterministic", action="store_true")
     parser.add_argument("--tb_freq", default=10)
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
@@ -78,13 +78,13 @@ def main():
 
     # setup debug
     if args.debug:
-        hparams['batch_size'] = 1
+        # hparams['batch_size'] = 1
         args.checkpoint_freq = 5
         args.steps = 10
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['backbone']}_{hparams['lr']}"
+    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['mode']}_{hparams['lr']}"
 
     # path setup
     args.work_dir = Path(".")
@@ -163,11 +163,11 @@ def main():
     results = collections.defaultdict(list)
 
     # class_name to class_token
-    class_name = dataset.datasets[0].classes
-    for i in range(len(class_name)):
-        class_name[i] = class_name[i].replace('_', ' ')
+    # class_name = dataset.datasets[0].classes
+    # for i in range(len(class_name)):
+    #     class_name[i] = class_name[i].replace('_', ' ')
 
-    class_token = torch.cat([clip.tokenize(f"an image of a {c}") for c in class_name]).to(device)
+    class_token = []
 
     for test_env in args.test_envs:
         res, records = train(
