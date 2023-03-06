@@ -21,7 +21,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["class_balanced"] = (False, False)
     # hparams["scheduler"] = ("const", "const")
     hparams["optimizer"] = ("adam", "adam")
-    hparams["CLIP"] = (True, True)
+    hparams["CLIP"] = (False, False)
     hparams['Text'] = ("RN50","RN50")
     hparams["text_dropout"] = (0.25, 0.25)
     hparams["hidden_size"] = (512, 512)
@@ -34,6 +34,7 @@ def _hparams(algorithm, dataset, random_state):
     # 2: u for category, v for domain label
     # 3: u for domain label, v for category
     hparams["use_lambda_scheduler"] = (True, True)
+    hparams['coupling'] = (True, True)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)

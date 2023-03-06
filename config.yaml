@@ -13,6 +13,7 @@ indomain_test: False  # use indomain test split or not
 # Contrast settings
 use_lambda_scheduler: True
 Disentangled: True
+coupling: True
 # Linear_cls: False
 # backbone: RN50 # 'RN50', 'ViT', 'Reg'
 # Text: ViT-B/16 # 'ViT-L/14', 'ViT-B/32'

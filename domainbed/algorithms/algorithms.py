@@ -88,7 +88,8 @@ class ERM(Algorithm):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
-        self.network = nn.Sequential(self.featurizer, self.classifier)
+        if self.hparams['coupling']:
+            self.Coupler = TransformerDecorator(self.classifier)
         if self.hparams["Disentangled"]:
             self.D_classifier = Discriminator(self.featurizer.n_outputs, self.featurizer.n_outputs, domain_num=num_domains)
         self.optimizer = get_optimizer(
@@ -107,14 +108,22 @@ class ERM(Algorithm):
         all_x = torch.cat(x)
         all_y = torch.cat(y)
         all_domain = torch.cat(domain_label)
-        self.optimizer.zero_grad() 
+        self.optimizer.zero_grad()
         if self.hparams["Disentangled"]:
+            adv_domain = None
             lamb = self.hparams['cls_d']
-            if self.hparams["use_lambda_scheduler"]:
+            if self.hparams["adv"]:
                 lamb = self.lambda_scheduler.lamb()
                 self.lambda_scheduler.step()
-            x_cls, x_domain = self.Disentangled(all_x, lamb)
+                adv_domain = torch.cat(domain_label)
 
+            x_cls, x_domain = self.Disentangled(all_x, lamb)
+            if self.hparams['coupling']:
+                all_y = torch.cat([all_y, all_y], dim=0)
+                all_domain = torch.cat([all_domain, all_domain], dim=0)
+
+            if self.hparams['adv']:
+                all_domain = torch.cat([all_domain, adv_domain], dim=0)
             loss_cls = F.cross_entropy(x_cls, all_y)
             loss_domain = F.cross_entropy(x_domain, all_domain)
             loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain
@@ -129,21 +138,40 @@ class ERM(Algorithm):
         x = self.featurizer(x)
         class_token = x[:, 0]
         tokens = x[:, 1:]
+        if self.hparams['coupling']:
+            new_x = self.Coupler(x)
+            new_class_token = new_x[:, 0]
+            new_tokens = new_x[:, 1:].mean(dim=1)
+
         if self.hparams['mode'] == 0:
+            if self.hparams['coupling']:
+                raise ValueError("Mode must be 2 or 3 when coupling is True.")
             x_cls = class_token
             x_domain = class_token
         elif self.hparams['mode'] == 1:
+            if self.hparams['coupling']:
+                raise ValueError("Mode must be 2 or 3 when coupling is True.")
             x_cls = tokens.mean(dim=1)
             x_domain = tokens.mean(dim=1)
         elif self.hparams['mode'] == 2:
             x_cls = class_token
             x_domain = tokens.mean(dim=1)
+            if self.hparams['coupling']:
+                x_new_cls = new_class_token
         else:
             x_cls = tokens.mean(dim=1)
             x_domain = class_token
-        
-        if self.hparams["adv"]:        
-            x_domain = ReverseLayerF.apply(x_domain, lamb)
+            if self.hparams['coupling']:
+                x_new_cls = new_tokens
+            
+
+        if self.hparams["adv"]:
+            x__cls_adv = ReverseLayerF.apply(x_cls, lamb)
+            x_domain = torch.cat([x_domain, x__cls_adv], dim=0)
+
+        if self.hparams['coupling']:
+            x_cls = torch.cat([x_cls, x_new_cls], dim=0)
+            x_domain = torch.cat([x_domain, x_new_cls], dim=0)
 
         x_cls = self.classifier(x_cls)
         x_domain = self.D_classifier(x_domain)
@@ -151,7 +179,7 @@ class ERM(Algorithm):
         return x_cls, x_domain
 
     def predict(self, x):
-        if self.hparams["mode"] == (1,3):
+        if self.hparams["mode"] == 1 or self.hparams["mode"] == 3:
             x = self.classifier(self.featurizer(x)[:, 1:].mean(dim=1))
         else:
             x = self.classifier(self.featurizer(x)[:, 0])
@@ -165,6 +193,10 @@ class ERM(Algorithm):
         if self.hparams['Disentangled']:
             params.append(
                 {'params': self.D_classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
+            )
+        if self.hparams['coupling']:
+            params.append(
+                {'params': self.Coupler.parameters(), 'lr': 100 * self.hparams["lr"]}
             )
         return params
 
@@ -197,6 +229,15 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
+class TransformerDecorator(torch.nn.Module):
+    def __init__(self, classifier):
+        super(TransformerDecorator, self).__init__()
+        self.encoder_layers = torch.nn.TransformerEncoderLayer(classifier.in_features, 4, classifier.in_features, 0.5)
+
+    def forward(self, x):
+        x = self.encoder_layers(x)
+        return x
 
 class LambdaSheduler(nn.Module):
     def __init__(self, gamma=1.0, max_iter=1000, **kwargs):

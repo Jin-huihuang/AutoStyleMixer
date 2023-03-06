@@ -84,7 +84,11 @@ def main():
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{hparams['mode']}_{hparams['lr']}"
+    if hparams['coupling']:
+        coupling = "c"
+    else:
+        coupling = ''
+    args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
 
     # path setup
     args.work_dir = Path(".")
