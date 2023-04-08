@@ -161,10 +161,13 @@ class ResNet(torch.nn.Module):
             self.n_outputs = 512
             self.network.fc = Identity()
         elif hparams["backbone"] == 'ViT':
-            # self.network = torchvision.models.vit_b_16(pretrained=hparams["pretrained"]).float()
-            self.network = timm.create_model("vit_small_patch16_224", pretrained=True)
+            if hparams['model_name'] == 'small':
+                self.network = timm.create_model("vit_small_patch16_224", pretrained=True)
+            elif hparams['model_name'] == 'base':
+                self.network = timm.create_model("vit_base_patch16_224", pretrained=True)
+            elif hparams['model_name'] == 'deit':
+                self.network = timm.create_model("deit_base_distilled_patch16_224", pretrained=True)
             self.n_outputs = self.network.embed_dim
-            # self.network.heads = Identity()
 
         elif hparams['backbone'] == 'Reg':
             self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])

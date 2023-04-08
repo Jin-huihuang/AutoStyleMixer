@@ -86,9 +86,11 @@ def main():
     timestamp = misc.timestamp()
     if hparams['coupling']:
         coupling = "c"
+        args.unique_name = f"{timestamp}_{args.name}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
     else:
         coupling = ''
-    args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
+        args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
+    
 
     # path setup
     args.work_dir = Path(".")

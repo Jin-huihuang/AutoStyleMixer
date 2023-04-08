@@ -35,6 +35,8 @@ def _hparams(algorithm, dataset, random_state):
     # 3: u for domain label, v for category
     hparams["use_lambda_scheduler"] = (True, True)
     hparams['coupling'] = (True, True)
+    hparams['model_name'] = ('small', 'small')
+    hparams["latent_dim"] = (32, 32)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)
