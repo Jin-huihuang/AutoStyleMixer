@@ -28,15 +28,17 @@ def _hparams(algorithm, dataset, random_state):
     hparams['unlr'] = (True, True)
     hparams["Disentangled"] = (True, True)
     hparams["adv"] = (False, False)
-    hparams["mode"] = (0, 0)  # u denotes the class token, v denotes the global features(global average pool for all tokens except class token). 
+    hparams["mode"] = (None, None)  # u denotes the class token, v denotes the global features(global average pool for all tokens except class token). 
     # 0: u be used to predict category and domain label
     # 1: v for category and domain label
     # 2: u for category, v for domain label
     # 3: u for domain label, v for category
     hparams["use_lambda_scheduler"] = (True, True)
     hparams['coupling'] = (True, True)
+    hparams['vae'] = (True, True)
     hparams['model_name'] = ('small', 'small')
     hparams["latent_dim"] = (32, 32)
+    hparams['re'] = (0.1, 0.1)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)

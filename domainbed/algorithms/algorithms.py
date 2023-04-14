@@ -119,12 +119,18 @@ class ERM(Algorithm):
                 adv_domain = torch.cat(domain_label)
                 all_domain = torch.cat([all_domain, adv_domain], dim=0)
             if self.hparams['coupling']:
-                x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
-
-                loss_cls = F.cross_entropy(x_cls, all_y)
-                loss_domain = F.cross_entropy(x_domain, all_domain)
-                loss_re = F.mse_loss(z, features, reduction="mean")
-                loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + loss_re + kld
+                if self.hparams['vae']:
+                    x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
+                    loss_cls = F.cross_entropy(x_cls, all_y)
+                    loss_domain = F.cross_entropy(x_domain, all_domain)
+                    loss_re = F.mse_loss(z, features, reduction="mean")
+                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re + kld
+                else:
+                    x_cls, x_domain, features, z = self.Disentangled(all_x, lamb)
+                    loss_cls = F.cross_entropy(x_cls, all_y)
+                    loss_domain = F.cross_entropy(x_domain, all_domain)
+                    loss_re = F.mse_loss(z, features, reduction="mean")
+                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re
             else:
                 x_cls, x_domain = self.Disentangled(all_x, lamb)
 
@@ -139,9 +145,18 @@ class ERM(Algorithm):
         return {"loss": loss.item()}
 
     def Disentangled(self, x, lamb):
-        x = self.featurizer(x).mean(dim=1)
+        x = self.featurizer(x)
+        if self.hparams['mode'] == 0:
+            x = x[:, 0]
+        elif self.hparams['mode'] == 1:
+            x = x[:, 1:].mean(dim=1)
+        else:
+            x = x.mean(dim=1)
         if self.hparams['coupling']:
-            x_cls, x_domain, z, kld = self.vae(x)
+            if self.hparams['vae']:
+                x_cls, x_domain, z, kld = self.vae(x)
+            else:
+                x_cls, x_domain, z= self.vae(x)
         else:
             if self.hparams["mode"] == 0 or self.hparams["mode"] == 2:
                 x_cls = x[:, 0]
@@ -166,7 +181,10 @@ class ERM(Algorithm):
         x_domain = self.D_classifier(x_domain)
 
         if self.hparams['coupling']:
-            return x_cls, x_domain, x, z, kld
+            if self.hparams['vae']:
+                return x_cls, x_domain, x, z, kld
+            else:
+                return x_cls, x_domain, x, z
         else:
             return x_cls, x_domain
 
@@ -249,11 +267,13 @@ class TVAE(torch.nn.Module):
 
 class VAE(torch.nn.Module):
     "Variational Autoencoder"
-    def __init__(self, hparams, input_dim, output_dim=256, latent_dim=32):
+    def __init__(self, hparams, input_dim, output_dim=256, latent_dim=256):
         super(VAE, self).__init__()
         self.hparams = hparams
         self.input_dim = input_dim
         self.output_dim = input_dim
+        if not self.hparams['vae']:
+            latent_dim = 256
         self.latent_dim = latent_dim
         self.encoder_cls = nn.Sequential(nn.Linear(self.input_dim, 512),
                                              nn.BatchNorm1d(512),
@@ -275,20 +295,25 @@ class VAE(torch.nn.Module):
                                              nn.BatchNorm1d(self.output_dim),
                                              nn.ReLU())
 
-        self.mu_cls = nn.Linear(256, self.latent_dim)
-        self.var_cls = nn.Linear(256, self.latent_dim)
-
-        self.mu_domain = nn.Linear(256, self.latent_dim)
-        self.var_domain = nn.Linear(256, self.latent_dim)
+        if self.hparams['vae']:
+            self.mu_cls = nn.Linear(256, self.latent_dim)
+            self.var_cls = nn.Linear(256, self.latent_dim)
+            self.mu_domain = nn.Linear(256, self.latent_dim)
+            self.var_domain = nn.Linear(256, self.latent_dim)
 
     def forward(self, x):
         x_cls = self.encoder_cls(x)
         x_domain = self.encoder_domain(x)
-        z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
-        z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
-        z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
+        if self.hparams['vae']:
+            z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
+            z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
+            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
+            return x_cls, x_domain, z, kld_cls + kld_domain
+        else:
+            z_cls, z_domain = x_cls, x_domain
+            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
 
-        return x_cls, x_domain, z, kld_cls + kld_domain
+            return x_cls, x_domain, z
 
     def reparameterize(self, x, mu, var):
         mean, logvar = mu(x), var(x)
