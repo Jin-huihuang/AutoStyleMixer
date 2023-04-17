@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd as autograd
 import numpy as np
+from timm.models.vision_transformer import Block
 
 #  import higher
 
@@ -91,12 +92,12 @@ class ERM(Algorithm):
         
         # Domain Cross Transformer block
         if self.hparams['DC']:
-            self.DC = torch.nn.TransformerEncoderLayer(256, 4, 256, 0.5)
+            self.DC = Block(dim=256, num_heads=4, mlp_ratio=2, norm_layer=nn.LayerNorm, act_layer=nn.GELU, drop=0.25, attn_drop=0.25)
 
         if self.hparams["Disentangled"]:
             self.D_classifier = Discriminator(256, 256, domain_num=num_domains)
             if self.hparams['coupling']:
-                self.vae = VAE(self.hparams, self.featurizer.n_outputs, latent_dim=hparams['latent_dim'])
+                self.vae = Cross_VAE(self.hparams, self.featurizer.n_outputs, latent_dim=hparams['latent_dim'])
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
@@ -111,25 +112,28 @@ class ERM(Algorithm):
             domain_label.append(torch.full_like(domain, index))
         
         all_x = torch.cat(x)
-        all_y = torch.cat(y)
-        all_domain = torch.cat(domain_label)
+        ys = torch.cat(y)
+        all_y = ys
+        domains = torch.cat(domain_label)
+        all_domain = domains
         self.optimizer.zero_grad()
         if self.hparams["Disentangled"]:
-            adv_domain = None
             lamb = self.hparams['cls_d']
             if self.hparams["adv"]:
                 lamb = self.lambda_scheduler.lamb()
                 self.lambda_scheduler.step()
-                adv_domain = torch.cat(domain_label)
-                all_domain = torch.cat([all_domain, adv_domain], dim=0)
+                all_domain = torch.cat([all_domain, domains], dim=0)
             if self.hparams['DC']:
-                all_domain = torch.cat([all_domain, torch.cat(domain_label)], dim=0)
+                all_domain = torch.cat([all_domain, domains], dim=0)
+            if self.hparams['cross']:
+                all_domain = torch.cat([all_domain, domains], dim=0)
+                all_y = torch.cat([all_y, ys], dim=0)
             if self.hparams['coupling']:
                 if self.hparams['vae']:
                     x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
                     loss_cls = F.cross_entropy(x_cls, all_y)
                     loss_domain = F.cross_entropy(x_domain, all_domain)
-                    loss_re = F.mse_loss(z, features, reduction="mean")
+                    loss_re = F.mse_loss(z, features, reduction="mean") # features.detach()
                     loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re + kld
                 else:
                     x_cls, x_domain, features, z = self.Disentangled(all_x, lamb)
@@ -176,11 +180,18 @@ class ERM(Algorithm):
         #     new_tokens = new_x[:, 1:].mean(dim=1)
 
         if self.hparams['DC']:
-            x_dc = self.DC(x_domain)
+            if self.hparams['cross']:
+                x_dc = self.DC(x_domain[0:int(len(x_domain)/2), :].unsqueeze(0)).squeeze(0)
+            else:
+                x_dc = self.DC(x_domain.unsqueeze(0)).squeeze(0)
             x_domain = torch.cat([x_domain, x_dc], dim=0)
 
         if self.hparams["adv"]:
-            x_cls_adv = ReverseLayerF.apply(x_cls, lamb)
+            if self.hparams['cross']:
+                x_cls_adv = ReverseLayerF.apply(x_cls[0:int(len(x_cls)/2), :], lamb)
+            else:
+                x_cls_adv = ReverseLayerF.apply(x_cls, lamb)
+            
             x_domain = torch.cat([x_domain, x_cls_adv], dim=0)
 
         # if self.hparams['coupling']:
@@ -337,6 +348,77 @@ class VAE(torch.nn.Module):
 
         z = eps.mul(std).add_(mean)
         return z, kld
+
+class Cross_VAE(torch.nn.Module):
+    "Cross Variational Autoencoder"
+    def __init__(self, hparams, input_dim, output_dim=256, latent_dim=256):
+        super(Cross_VAE, self).__init__()
+        self.hparams = hparams
+        self.input_dim = input_dim
+        self.output_dim = input_dim
+        if not self.hparams['vae']:
+            latent_dim = 256
+        self.latent_dim = latent_dim
+        self.encoder_cls = nn.Sequential(nn.Linear(self.input_dim, 512),
+                                             nn.BatchNorm1d(512),
+                                             nn.ReLU(),
+                                             nn.Linear(512, 256),
+                                             nn.BatchNorm1d(256),
+                                             nn.ReLU())
+        self.encoder_domain = nn.Sequential(nn.Linear(self.input_dim, 512),
+                                             nn.BatchNorm1d(512),
+                                             nn.ReLU(),
+                                             nn.Linear(512, 256),
+                                             nn.BatchNorm1d(256),
+                                             nn.ReLU())
+        
+        self.decoder = nn.Sequential(nn.Linear(self.latent_dim*2, 256),
+                                             nn.BatchNorm1d(256),
+                                             nn.ReLU(),
+                                             nn.Linear(256, self.output_dim),
+                                             nn.BatchNorm1d(self.output_dim),
+                                             nn.ReLU())
+
+        if self.hparams['vae']:
+            self.mu_cls = nn.Linear(256, self.latent_dim)
+            self.var_cls = nn.Linear(256, self.latent_dim)
+            self.mu_domain = nn.Linear(256, self.latent_dim)
+            self.var_domain = nn.Linear(256, self.latent_dim)
+
+    def forward(self, x):
+        x_cls = self.encoder_cls(x)
+        x_domain = self.encoder_domain(x)
+        if self.hparams['vae']:
+            if self.hparams['cross']:
+                x_cls
+            z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
+            z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
+            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
+            if self.hparams['cross']:
+                z_cls = self.encoder_cls(z)
+                z_domain = self.encoder_domain(z)
+                x_cls = torch.cat([x_cls, z_cls], dim=0)
+                x_domain = torch.cat([x_domain, z_domain], dim=0)
+            return x_cls, x_domain, z, kld_cls + kld_domain
+        else:
+            z_cls, z_domain = x_cls, x_domain
+            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
+            if self.hparams['cross']:
+                z_cls = self.encoder_cls(z)
+                z_domain = self.encoder_domain(z)
+                x_cls = torch.cat([x_cls, z_cls], dim=0)
+                x_domain = torch.cat([x_domain, z_domain], dim=0)
+            return x_cls, x_domain, z
+
+    def reparameterize(self, x, mu, var):
+        mean, logvar = mu(x), var(x)
+        std = torch.exp(logvar / 2)
+        kld = - 0.5 * torch.sum(1 + logvar - mean.pow(2) - std) / mean.shape[0]
+        eps = std.data.new(std.size()).normal_()
+
+        z = eps.mul(std).add_(mean)
+        return z, kld
+
 class LambdaSheduler(nn.Module):
     def __init__(self, gamma=1.0, max_iter=1000, **kwargs):
         super(LambdaSheduler, self).__init__()

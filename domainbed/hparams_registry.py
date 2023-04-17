@@ -40,6 +40,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["latent_dim"] = (32, 32)
     hparams['re'] = (0.1, 0.1)
     hparams['DC'] = (False, False)
+    hparams['cross'] = (False, False)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)
