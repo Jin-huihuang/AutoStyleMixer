@@ -89,6 +89,10 @@ class ERM(Algorithm):
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = nn.Linear(256, num_classes)
         
+        # Domain Cross Transformer block
+        if self.hparams['DC']:
+            self.DC = torch.nn.TransformerEncoderLayer(256, 4, 256, 0.5)
+
         if self.hparams["Disentangled"]:
             self.D_classifier = Discriminator(256, 256, domain_num=num_domains)
             if self.hparams['coupling']:
@@ -118,6 +122,8 @@ class ERM(Algorithm):
                 self.lambda_scheduler.step()
                 adv_domain = torch.cat(domain_label)
                 all_domain = torch.cat([all_domain, adv_domain], dim=0)
+            if self.hparams['DC']:
+                all_domain = torch.cat([all_domain, torch.cat(domain_label)], dim=0)
             if self.hparams['coupling']:
                 if self.hparams['vae']:
                     x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
@@ -169,6 +175,10 @@ class ERM(Algorithm):
         #     new_class_token = new_x[:, 0]
         #     new_tokens = new_x[:, 1:].mean(dim=1)
 
+        if self.hparams['DC']:
+            x_dc = self.DC(x_domain)
+            x_domain = torch.cat([x_domain, x_dc], dim=0)
+
         if self.hparams["adv"]:
             x_cls_adv = ReverseLayerF.apply(x_cls, lamb)
             x_domain = torch.cat([x_domain, x_cls_adv], dim=0)
@@ -210,6 +220,10 @@ class ERM(Algorithm):
         if self.hparams['coupling']:
             params.append(
                 {'params': self.vae.parameters(), 'lr': 100 * self.hparams["lr"]}
+            )
+        if self.hparams['DC']:
+            params.append(
+                {'params': self.DC.parameters(), 'lr': 100 * self.hparams["lr"]}
             )
         return params
 
