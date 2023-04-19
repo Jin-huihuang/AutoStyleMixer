@@ -127,13 +127,15 @@ class ERM(Algorithm):
                 all_domain = torch.cat([all_domain, domains], dim=0)
             if self.hparams['cross']:
                 all_domain = torch.cat([all_domain, domains], dim=0)
-                all_y = torch.cat([all_y, ys], dim=0)
+                all_y = torch.cat([all_y, ys, ys], dim=0)
             if self.hparams['coupling']:
                 if self.hparams['vae']:
                     x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
+                    if self.hparams['cross']:
+                        all_domain = torch.cat([all_domain, domains[self.vae.random_perm]], dim=0)
                     loss_cls = F.cross_entropy(x_cls, all_y)
                     loss_domain = F.cross_entropy(x_domain, all_domain)
-                    loss_re = F.mse_loss(z, features, reduction="mean") # features.detach()
+                    loss_re = F.mse_loss(z, features.detach(), reduction="mean") # features.detach()
                     loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re + kld
                 else:
                     x_cls, x_domain, features, z = self.Disentangled(all_x, lamb)
@@ -180,23 +182,12 @@ class ERM(Algorithm):
         #     new_tokens = new_x[:, 1:].mean(dim=1)
 
         if self.hparams['DC']:
-            if self.hparams['cross']:
-                x_dc = self.DC(x_domain[0:int(len(x_domain)/2), :].unsqueeze(0)).squeeze(0)
-            else:
-                x_dc = self.DC(x_domain.unsqueeze(0)).squeeze(0)
-            x_domain = torch.cat([x_domain, x_dc], dim=0)
+            x_dc = self.DC(x_domain[0:len(x), :].unsqueeze(0)).squeeze(0)
+            x_domain = torch.cat([x_dc, x_domain], dim=0)
 
         if self.hparams["adv"]:
-            if self.hparams['cross']:
-                x_cls_adv = ReverseLayerF.apply(x_cls[0:int(len(x_cls)/2), :], lamb)
-            else:
-                x_cls_adv = ReverseLayerF.apply(x_cls, lamb)
-            
-            x_domain = torch.cat([x_domain, x_cls_adv], dim=0)
-
-        # if self.hparams['coupling']:
-        #     x_cls = torch.cat([x_cls, x_new_cls], dim=0)
-        #     x_domain = torch.cat([x_domain, x_new_cls], dim=0)
+            x_cls_adv = ReverseLayerF.apply(x_cls[0:len(x), :], lamb)
+            x_domain = torch.cat([x_cls_adv, x_domain], dim=0)
 
         x_cls = self.classifier(x_cls)
         x_domain = self.D_classifier(x_domain)
@@ -267,15 +258,6 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
-class TransformerDecorator(torch.nn.Module):
-    def __init__(self, classifier):
-        super(TransformerDecorator, self).__init__()
-        self.encoder_layers = torch.nn.TransformerEncoderLayer(classifier.in_features, 4, classifier.in_features, 0.5)
-
-    def forward(self, x):
-        x = self.encoder_layers(x)
-        return x
 
 class TVAE(torch.nn.Module):
     "Transformer Variational Autoencoder"
@@ -356,6 +338,7 @@ class Cross_VAE(torch.nn.Module):
         self.hparams = hparams
         self.input_dim = input_dim
         self.output_dim = input_dim
+        self.random_perm = None
         if not self.hparams['vae']:
             latent_dim = 256
         self.latent_dim = latent_dim
@@ -389,26 +372,36 @@ class Cross_VAE(torch.nn.Module):
         x_cls = self.encoder_cls(x)
         x_domain = self.encoder_domain(x)
         if self.hparams['vae']:
-            if self.hparams['cross']:
-                x_cls
             z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
             z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
+            if self.hparams['cross']:
+                perm = torch.randperm(len(z_domain))
+                self.random_perm = perm
+                random_domain = z_domain[perm]
+                z_cls = torch.cat([z_cls, z_cls], dim=0)
+                z_domain = torch.cat([z_domain, random_domain], dim=0)
             z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
             if self.hparams['cross']:
                 z_cls = self.encoder_cls(z)
                 z_domain = self.encoder_domain(z)
                 x_cls = torch.cat([x_cls, z_cls], dim=0)
                 x_domain = torch.cat([x_domain, z_domain], dim=0)
-            return x_cls, x_domain, z, kld_cls + kld_domain
+            return x_cls, x_domain, z[0:len(x)], kld_cls + kld_domain
         else:
             z_cls, z_domain = x_cls, x_domain
+            if self.hparams['cross']:
+                perm = torch.randperm(len(z_domain))
+                self.random_perm = perm
+                random_domain = z_domain[perm]
+                z_cls = torch.cat([z_cls, z_cls], dim=0)
+                z_domain = torch.cat([z_domain, random_domain], dim=0)
             z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
             if self.hparams['cross']:
                 z_cls = self.encoder_cls(z)
                 z_domain = self.encoder_domain(z)
                 x_cls = torch.cat([x_cls, z_cls], dim=0)
                 x_domain = torch.cat([x_domain, z_domain], dim=0)
-            return x_cls, x_domain, z
+            return x_cls, x_domain, z[0:len(x)]
 
     def reparameterize(self, x, mu, var):
         mean, logvar = mu(x), var(x)
