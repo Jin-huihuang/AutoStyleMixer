@@ -127,7 +127,7 @@ class ERM(Algorithm):
                 all_domain = torch.cat([all_domain, domains], dim=0)
             if self.hparams['cross']:
                 all_domain = torch.cat([all_domain, domains], dim=0)
-                all_y = torch.cat([all_y, ys, ys], dim=0)
+                all_y = torch.cat([all_y, ys], dim=0)
             if self.hparams['coupling']:
                 if self.hparams['vae']:
                     x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
@@ -136,9 +136,11 @@ class ERM(Algorithm):
                     loss_cls = F.cross_entropy(x_cls, all_y)
                     loss_domain = F.cross_entropy(x_domain, all_domain)
                     loss_re = F.mse_loss(z, features.detach(), reduction="mean") # features.detach()
-                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re + kld
+                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * (loss_re + kld)
                 else:
                     x_cls, x_domain, features, z = self.Disentangled(all_x, lamb)
+                    if self.hparams['cross']:
+                        all_domain = torch.cat([all_domain, domains[self.vae.random_perm]], dim=0)
                     loss_cls = F.cross_entropy(x_cls, all_y)
                     loss_domain = F.cross_entropy(x_domain, all_domain)
                     loss_re = F.mse_loss(z, features, reduction="mean")
@@ -158,11 +160,7 @@ class ERM(Algorithm):
 
     def Disentangled(self, x, lamb):
         x = self.featurizer(x)
-        if self.hparams['mode'] == 0:
-            x = x[:, 0]
-        elif self.hparams['mode'] == 1:
-            x = x[:, 1:].mean(dim=1)
-        else:
+        if self.hparams['backbone'] == 'ViT':
             x = x.mean(dim=1)
         if self.hparams['coupling']:
             if self.hparams['vae']:
@@ -182,11 +180,13 @@ class ERM(Algorithm):
         #     new_tokens = new_x[:, 1:].mean(dim=1)
 
         if self.hparams['DC']:
-            x_dc = self.DC(x_domain[0:len(x), :].unsqueeze(0)).squeeze(0)
+            x_dc = x_domain[0:len(x), :].unsqueeze(0)
+            x_dc = self.DC(x_dc.view(-1, self.hparams['batch_size'], x_dc.shape[2]))
+            x_dc = x_dc.view(1, -1, x_dc.shape[2]).squeeze(0)
             x_domain = torch.cat([x_dc, x_domain], dim=0)
 
         if self.hparams["adv"]:
-            x_cls_adv = ReverseLayerF.apply(x_cls[0:len(x), :], lamb)
+            x_cls_adv = ReverseLayerF.apply(x_cls, lamb) # total x_cls add to GRL 
             x_domain = torch.cat([x_cls_adv, x_domain], dim=0)
 
         x_cls = self.classifier(x_cls)
@@ -202,7 +202,10 @@ class ERM(Algorithm):
 
     def predict(self, x):
         if self.hparams['coupling']:
-            x = self.classifier(self.vae.encoder_cls(self.featurizer(x).mean(dim=1)))
+            x = self.featurizer(x)
+            if self.hparams['backbone'] == 'ViT':
+                x = x.mean(dim=1)
+            x = self.classifier(self.vae.encoder_cls(x))
         else:
             if self.hparams["mode"] == 1 or self.hparams["mode"] == 3:
                 x = self.classifier(self.featurizer(x)[:, 1:].mean(dim=1))
@@ -378,8 +381,7 @@ class Cross_VAE(torch.nn.Module):
                 perm = torch.randperm(len(z_domain))
                 self.random_perm = perm
                 random_domain = z_domain[perm]
-                z_cls = torch.cat([z_cls, z_cls], dim=0)
-                z_domain = torch.cat([z_domain, random_domain], dim=0)
+                z_domain = random_domain
             z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
             if self.hparams['cross']:
                 z_cls = self.encoder_cls(z)
@@ -393,8 +395,7 @@ class Cross_VAE(torch.nn.Module):
                 perm = torch.randperm(len(z_domain))
                 self.random_perm = perm
                 random_domain = z_domain[perm]
-                z_cls = torch.cat([z_cls, z_cls], dim=0)
-                z_domain = torch.cat([z_domain, random_domain], dim=0)
+                z_domain = random_domain
             z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
             if self.hparams['cross']:
                 z_cls = self.encoder_cls(z)

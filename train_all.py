@@ -93,8 +93,10 @@ def main():
     else:
         coupling = ''
         args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
-
-
+    if hparams['backbone'] == 'ViT':
+        args.unique_name = 'V' + args.unique_name
+    else:
+        args.unique_name = 'R' + args.unique_name
     # path setup
     args.work_dir = Path(".")
     args.data_dir = Path(args.data_dir)
