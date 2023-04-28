@@ -21,26 +21,17 @@ def _hparams(algorithm, dataset, random_state):
     hparams["class_balanced"] = (False, False)
     # hparams["scheduler"] = ("const", "const")
     hparams["optimizer"] = ("adam", "adam")
-    hparams["CLIP"] = (False, False)
-    hparams['Text'] = ("RN50","RN50")
-    hparams["text_dropout"] = (0.25, 0.25)
     hparams["hidden_size"] = (512, 512)
     hparams['unlr'] = (True, True)
-    hparams["Disentangled"] = (True, True)
-    hparams["adv"] = (False, False)
-    hparams["mode"] = (None, None)  # u denotes the class token, v denotes the global features(global average pool for all tokens except class token). 
-    # 0: u be used to predict category and domain label
-    # 1: v for category and domain label
-    # 2: u for category, v for domain label
-    # 3: u for domain label, v for category
+
     hparams["use_lambda_scheduler"] = (True, True)
-    hparams['coupling'] = (True, True)
-    hparams['vae'] = (True, True)
     hparams['model_name'] = ('small', 'small')
-    hparams["latent_dim"] = (32, 32)
-    hparams['re'] = (0.1, 0.1)
-    hparams['DC'] = (False, False)
-    hparams['cross'] = (False, False)
+    hparams["mix_layers"]=(["conv2_x", "conv3_x", "conv4_x"], ["conv2_x", "conv3_x", "conv4_x"])
+    hparams["mix_p"]=(0.5, 0.5)
+    hparams["mix_a"]=(0.1, 0.1)
+    hparams['T'] = (10, 10)
+    hparams['warm_MT'] = (False, False)
+    hparams['steps'] = (5000, 5000)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)

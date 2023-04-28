@@ -157,8 +157,9 @@ class ResNet(torch.nn.Module):
 
         if hparams["resnet18"]:
             if network is None:
-                self.network = torchvision.models.resnet18(pretrained=hparams["pretrained"])
+                network = torchvision.models.resnet18(pretrained=hparams["pretrained"])
             self.n_outputs = 512
+            self.network = network
             self.network.fc = Identity()
         elif hparams["backbone"] == 'ViT':
             if hparams['model_name'] == 'small':
@@ -168,14 +169,14 @@ class ResNet(torch.nn.Module):
             elif hparams['model_name'] == 'deit':
                 self.network = timm.create_model("deit_base_distilled_patch16_224", pretrained=True)
             self.n_outputs = self.network.embed_dim
-
         elif hparams['backbone'] == 'Reg':
             self.network = torchvision.models.regnet_y_16gf(pretrained=hparams["pretrained"])
             self.n_outputs = 3024
             self.network.fc = Identity()
         else:
             if network is None:
-                self.network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
+                network = torchvision.models.resnet50(pretrained=hparams["pretrained"])
+            self.network = network
             self.n_outputs = 2048
             self.network.fc = Identity()
 
@@ -184,11 +185,7 @@ class ResNet(torch.nn.Module):
 
     def forward(self, x):
         """Encode x into a feature vector of size n_outputs."""
-        if self.hparams["backbone"] != 'ViT':
-            return self.dropout(self.network(x))
-        x = self.network.forward_features(x)
-
-        return x
+        return self.dropout(self.network(x))
 
     def train(self, mode=True):
         """
@@ -308,13 +305,18 @@ def fea_proj(hparams, out_dim):
         )
     elif hparams['dataset'] == "OfficeHome":
         dropout = nn.Dropout(0.25)
+        hparams['dim'] = 512
         hparams['out_dim'] = out_dim
-        fea_proj = nn.Sequential(
-            nn.Linear(hparams['hidden_size'],
-                      hparams['hidden_size']),
-            dropout,
-            nn.Linear(hparams['hidden_size'],
-                      hparams['out_dim']),
+        # fea_proj = nn.Sequential(
+        #     nn.Linear(hparams['hidden_size'],
+        #               hparams['dim']),
+        #     dropout,
+        #     nn.Linear(hparams['dim'],
+        #               hparams['out_dim']),
+        # )
+        fea_proj = nn.Parameter(
+            torch.FloatTensor(hparams['hidden_size'],
+                              hparams['out_dim'])
         )
     elif hparams['dataset'] == "VLCS":
         dropout = nn.Dropout(0.25)

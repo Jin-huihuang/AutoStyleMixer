@@ -32,7 +32,7 @@ def json_handler(v):
 
 def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, target_env=None, **kwargs):
     logger.info("")
-    
+    hparams['steps'] = n_steps
     #######################################################
     # setup dataset & loader
     #######################################################
@@ -126,7 +126,6 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         dataset.num_classes,
         len(dataset) - len(test_envs),
         hparams,
-        n_steps=n_steps,
         **kwargs
     )
 
@@ -268,8 +267,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
     logger.info("---")
     records = Q(records)
     oracle_best = records.argmax("test_out")["test_in"]
-    oracle_best_cls = records.argmax("test_outcls")["test_incls"]
-    oracle_best_inte = records.argmax("test_outinte")["test_ininte"]
+    oracle_best_MT = records.argmax("test_outMT")["test_inMT"]
     iid_best = records.argmax("train_out")["test_in"]
     last = records[-1]["test_in"]
 
@@ -284,8 +282,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
 
     ret = {
         "oracle": oracle_best,
-        "oracle_best_cls": oracle_best_cls,
-        "oracle_best_inte": oracle_best_inte,
+        "oracle_best_MT": oracle_best_MT,
         "iid": iid_best,
         "last": last,
         "last (inD)": last_indomain,
@@ -311,8 +308,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         torch.save(swad_algorithm.module, os.path.join(args.out_dir, testenv_name + "-swad" + '.pth'))
 
         ret["SWAD"] = results["test_in"]
-        ret["SWAD_cls"] = results["test_incls"]
-        ret["SWAD_inte"] = results["test_ininte"]
+        ret["SWAD_MT"] = results["test_inMT"]
         ret["SWAD (inD)"] = results[in_key]
 
     for k, acc in ret.items():

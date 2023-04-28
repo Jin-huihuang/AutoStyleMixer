@@ -111,6 +111,7 @@ class ResNet(nn.Module):
         self.global_avgpool = nn.AdaptiveAvgPool2d(1)
 
         self.mixstyle = None
+        self._activated = True
         if mixstyle_layers:
             self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha)
             for layer_name in mixstyle_layers:
@@ -166,6 +167,9 @@ class ResNet(nn.Module):
         mu = x.mean(dim=[2, 3])
         sig = x.std(dim=[2, 3])
         return torch.cat([mu, sig], 1)
+    
+    def set_activation_status(self, status=True):
+        self._activated = status
 
     def featuremaps(self, x):
         x = self.conv1(x)
@@ -174,19 +178,19 @@ class ResNet(nn.Module):
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        if "conv2_x" in self.mixstyle_layers:
+        if "conv2_x" in self.mixstyle_layers and self._activated:
             x = self.mixstyle(x)
 
         x = self.layer2(x)
-        if "conv3_x" in self.mixstyle_layers:
+        if "conv3_x" in self.mixstyle_layers and self._activated:
             x = self.mixstyle(x)
 
         x = self.layer3(x)
-        if "conv4_x" in self.mixstyle_layers:
+        if "conv4_x" in self.mixstyle_layers and self._activated:
             x = self.mixstyle(x)
 
         x = self.layer4(x)
-        if "conv5_x" in self.mixstyle_layers:
+        if "conv5_x" in self.mixstyle_layers and self._activated:
             x = self.mixstyle(x)
 
         return x
@@ -232,9 +236,9 @@ def resnet50_mixstyle2_L234_p0d5_a0d1(pretrained=True, **kwargs):
     model = ResNet(
         block=Bottleneck,
         layers=[3, 4, 6, 3],
-        mixstyle_layers=["conv2_x", "conv3_x", "conv4_x"],
-        mixstyle_p=0.5,
-        mixstyle_alpha=0.1,
+        mixstyle_layers=kwargs["hparams"]["mix_layers"],
+        mixstyle_p=kwargs["hparams"]["mix_p"],
+        mixstyle_alpha=kwargs["hparams"]["mix_a"],
     )
 
     if pretrained:

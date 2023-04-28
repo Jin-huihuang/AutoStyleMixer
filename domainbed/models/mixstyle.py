@@ -77,6 +77,7 @@ class MixStyle2(nn.Module):
         self.beta = torch.distributions.Beta(alpha, alpha)
         self.eps = eps
         self.alpha = alpha
+        self._activated = True
 
         print("* MixStyle params")
         print(f"- p: {p}")

@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import copy
+import math
 from torch.cuda.amp import autocast
 from typing import List
 from clip.model import convert_weights
@@ -15,6 +16,7 @@ from timm.models.vision_transformer import Block
 #  import higher
 
 from domainbed import networks
+from domainbed.tools import *
 from domainbed.lib.misc import random_pairs_of_minibatches
 from domainbed.optimizers import get_optimizer
 
@@ -26,7 +28,6 @@ from domainbed.models.resnet_mixstyle2 import (
     resnet18_mixstyle2_L234_p0d5_a0d1,
     resnet50_mixstyle2_L234_p0d5_a0d1,
 )
-
 
 def to_minibatch(x, y):
     minibatches = list(zip(x, y))
@@ -85,151 +86,138 @@ class ERM(Algorithm):
     Empirical Risk Minimization (ERM)
     """
 
-    def __init__(self, input_shape, num_classes, num_domains, hparams, gamma=1, **kwargs):
+    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
         super(ERM, self).__init__(input_shape, num_classes, num_domains, hparams)
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
-        self.classifier = nn.Linear(256, num_classes)
-        
-        # Domain Cross Transformer block
-        if self.hparams['DC']:
-            self.DC = Block(dim=256, num_heads=4, mlp_ratio=2, norm_layer=nn.LayerNorm, act_layer=nn.GELU, drop=0.25, attn_drop=0.25)
-
-        if self.hparams["Disentangled"]:
-            self.D_classifier = Discriminator(256, 256, domain_num=num_domains)
-            if self.hparams['coupling']:
-                self.vae = Cross_VAE(self.hparams, self.featurizer.n_outputs, latent_dim=hparams['latent_dim'])
+        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        self.network = nn.Sequential(self.featurizer, self.classifier)
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
             lr=self.hparams["lr"],
             weight_decay=self.hparams["weight_decay"],
         )
-        self.lambda_scheduler = LambdaSheduler(gamma, kwargs['n_steps'])
 
     def update(self, x, y, **kwargs):
-        domain_label = []
-        for index, (domain) in enumerate(y):
-            domain_label.append(torch.full_like(domain, index))
-        
         all_x = torch.cat(x)
-        ys = torch.cat(y)
-        all_y = ys
-        domains = torch.cat(domain_label)
-        all_domain = domains
+        all_y = torch.cat(y)
         self.optimizer.zero_grad()
-        if self.hparams["Disentangled"]:
-            lamb = self.hparams['cls_d']
-            if self.hparams["adv"]:
-                lamb = self.lambda_scheduler.lamb()
-                self.lambda_scheduler.step()
-                all_domain = torch.cat([all_domain, domains], dim=0)
-            if self.hparams['DC']:
-                all_domain = torch.cat([all_domain, domains], dim=0)
-            if self.hparams['cross']:
-                all_domain = torch.cat([all_domain, domains], dim=0)
-                all_y = torch.cat([all_y, ys], dim=0)
-            if self.hparams['coupling']:
-                if self.hparams['vae']:
-                    x_cls, x_domain, features, z, kld = self.Disentangled(all_x, lamb)
-                    if self.hparams['cross']:
-                        all_domain = torch.cat([all_domain, domains[self.vae.random_perm]], dim=0)
-                    loss_cls = F.cross_entropy(x_cls, all_y)
-                    loss_domain = F.cross_entropy(x_domain, all_domain)
-                    loss_re = F.mse_loss(z, features.detach(), reduction="mean") # features.detach()
-                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * (loss_re + kld)
-                else:
-                    x_cls, x_domain, features, z = self.Disentangled(all_x, lamb)
-                    if self.hparams['cross']:
-                        all_domain = torch.cat([all_domain, domains[self.vae.random_perm]], dim=0)
-                    loss_cls = F.cross_entropy(x_cls, all_y)
-                    loss_domain = F.cross_entropy(x_domain, all_domain)
-                    loss_re = F.mse_loss(z, features, reduction="mean")
-                    loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain + self.hparams['re'] * loss_re
-            else:
-                x_cls, x_domain = self.Disentangled(all_x, lamb)
 
-                loss_cls = F.cross_entropy(x_cls, all_y)
-                loss_domain = F.cross_entropy(x_domain, all_domain)
-                loss = self.hparams['cls_c'] * loss_cls + lamb * loss_domain
-        else:
+        with autocast():
             loss = F.cross_entropy(self.predict(all_x), all_y)
         loss.backward()
+        # CLIP model is float16
+        if self.hparams["CLIP"]:
+            self.featurizer.float()
         self.optimizer.step()
+        if self.hparams["CLIP"]:
+            convert_weights(self.featurizer)
 
         return {"loss": loss.item()}
 
-    def Disentangled(self, x, lamb):
+    def predict(self, x):
+        
+        if self.hparams["CLIP"]:
+            with autocast():
+                return self.classifier(self.featurizer.forward_features(x))
+        return self.network(x)
+
+    def get_params(self):
+        if self.hparams["CLIP"]:
+            params = [
+                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"], 'eps': 1e-5}
+                ]
+        else:
+            params = [
+                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+                ]
+        return params
+    
+class MHDG(Algorithm):
+    """
+    Multi-Head Domain Generalization
+    """
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
+        super(MHDG, self).__init__(input_shape, num_classes, num_domains, hparams)
+        self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        self.num_domains = num_domains
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.hparams['hidden_size'] = self.featurizer.n_outputs
+        if hparams['MH']:
+            self.MH_classifier = nn.ParameterList()
+            for i in range(num_domains):
+                fc_proj = networks.fea_proj(hparams, num_classes)
+                nn.init.kaiming_uniform_(fc_proj, mode='fan_out', a=math.sqrt(5))
+                self.MH_classifier.append(fc_proj)
+            # self.MH_classifier = torch.stack(self.MH_classifier)
+            self.classifier = networks.fea_proj(hparams, num_classes)
+            nn.init.kaiming_uniform_(self.classifier, mode='fan_out', a=math.sqrt(5))
+        else:
+            self.classifier = networks.fea_proj(hparams, num_classes)
+            nn.init.kaiming_uniform_(self.classifier, mode='fan_out', a=math.sqrt(5))
+        # self.network = nn.Sequential(self.featurizer, self.classifier)
+        self.optimizer = get_optimizer(
+            hparams["optimizer"],
+            params=self.get_params(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
+
+    def update(self, x, y, **kwargs):
+        all_x = torch.cat(x)
+        all_y = torch.cat(y)
+        self.optimizer.zero_grad()
+
+        ally = all_y
+        if self.hparams['MH']:
+            for i in range(self.num_domains):
+                ally = torch.cat([ally, all_y])
+        loss = F.cross_entropy(self.train_net(all_x), ally)
+        loss.backward()
+        
+        self.optimizer.step()
+
+        return {"loss": loss.item()}
+    
+    def train_net(self, x):
         x = self.featurizer(x)
-        if self.hparams['backbone'] == 'ViT':
-            x = x.mean(dim=1)
-        if self.hparams['coupling']:
-            if self.hparams['vae']:
-                x_cls, x_domain, z, kld = self.vae(x)
-            else:
-                x_cls, x_domain, z= self.vae(x)
-        else:
-            if self.hparams["mode"] == 0 or self.hparams["mode"] == 2:
-                x_cls = x[:, 0]
-                x_domain = x[:, 1:].mean(dim=1)
-            else:
-                x_domain = x[:, 0]
-                x_cls = x[:, 1:].mean(dim=1)
-        # if self.hparams['coupling']:
-        #     new_x = self.Coupler(x)
-        #     new_class_token = new_x[:, 0]
-        #     new_tokens = new_x[:, 1:].mean(dim=1)
-
-        if self.hparams['DC']:
-            x_dc = x_domain[0:len(x), :].unsqueeze(0)
-            x_dc = self.DC(x_dc.view(-1, self.hparams['batch_size'], x_dc.shape[2]))
-            x_dc = x_dc.view(1, -1, x_dc.shape[2]).squeeze(0)
-            x_domain = torch.cat([x_dc, x_domain], dim=0)
-
-        if self.hparams["adv"]:
-            x_cls_adv = ReverseLayerF.apply(x_cls, lamb) # total x_cls add to GRL 
-            x_domain = torch.cat([x_cls_adv, x_domain], dim=0)
-
-        x_cls = self.classifier(x_cls)
-        x_domain = self.D_classifier(x_domain)
-
-        if self.hparams['coupling']:
-            if self.hparams['vae']:
-                return x_cls, x_domain, x, z, kld
-            else:
-                return x_cls, x_domain, x, z
-        else:
-            return x_cls, x_domain
+        x = x / x.norm(dim=1, keepdim=True)
+        # pred = []
+        # for i in range(self.num_domains):
+        #     cls = self.MH_classifier[i] / self.MH_classifier[i].norm(dim=1, keepdim=True)
+        #     logits = x @ cls
+        #     pred.append(logits)
+        logit_scale = self.logit_scale.exp()
+        cla = self.classifier / self.classifier.norm(dim=1, keepdim=True)
+        x = x @ cla
+        # return torch.cat([x, torch.cat(pred)])
+        return x
 
     def predict(self, x):
-        if self.hparams['coupling']:
-            x = self.featurizer(x)
-            if self.hparams['backbone'] == 'ViT':
-                x = x.mean(dim=1)
-            x = self.classifier(self.vae.encoder_cls(x))
-        else:
-            if self.hparams["mode"] == 1 or self.hparams["mode"] == 3:
-                x = self.classifier(self.featurizer(x)[:, 1:].mean(dim=1))
-            else:
-                x = self.classifier(self.featurizer(x)[:, 0])
+        x = self.featurizer(x)
+        x = x / x.norm(dim=1, keepdim=True)
+        cla = self.classifier / self.classifier.norm(dim=1, keepdim=True)
+        x = x @ cla
         return x
+        # pred = []
+        # for i in range(self.num_domains):
+        #     cls = self.MH_classifier[i] / self.MH_classifier[i].norm(dim=1, keepdim=True)
+        #     logits = x @ cls
+        #     pred.append(F.softmax(logits, dim=1))
+        # x = F.softmax(x @ self.classifier, dim=1)
+        # return sum(x, sum(pred))
 
     def get_params(self):
         params = [
                 {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+                {'params': self.classifier, 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
             ]
-        if self.hparams['Disentangled']:
-            params.append(
-                {'params': self.D_classifier.parameters(), 'lr': 100 * self.hparams["lr"]}
-            )
-        if self.hparams['coupling']:
-            params.append(
-                {'params': self.vae.parameters(), 'lr': 100 * self.hparams["lr"]}
-            )
-        if self.hparams['DC']:
-            params.append(
-                {'params': self.DC.parameters(), 'lr': 100 * self.hparams["lr"]}
-            )
+        if self.hparams['MH']:
+            for i in range(self.num_domains):
+                params.append({'params': self.MH_classifier[i], 'lr': 100 * self.hparams["lr"]})
         return params
 
 class Discriminator(nn.Module):
@@ -261,157 +249,6 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
-class TVAE(torch.nn.Module):
-    "Transformer Variational Autoencoder"
-    def __init__(self, classifier):
-        super(TVAE, self).__init__()
-
-        self.encoder = torch.nn.TransformerEncoderLayer(classifier.in_features, 4, classifier.in_features, 0.5)
-        self.decoder = torch.nn.TransformerEncoderLayer(classifier.in_features, 4, classifier.in_features, 0.5)
-
-    def forward(self, x):
-        x = self.encoder(x)
-        
-        return x
-
-class VAE(torch.nn.Module):
-    "Variational Autoencoder"
-    def __init__(self, hparams, input_dim, output_dim=256, latent_dim=256):
-        super(VAE, self).__init__()
-        self.hparams = hparams
-        self.input_dim = input_dim
-        self.output_dim = input_dim
-        if not self.hparams['vae']:
-            latent_dim = 256
-        self.latent_dim = latent_dim
-        self.encoder_cls = nn.Sequential(nn.Linear(self.input_dim, 512),
-                                             nn.BatchNorm1d(512),
-                                             nn.ReLU(),
-                                             nn.Linear(512, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU())
-        self.encoder_domain = nn.Sequential(nn.Linear(self.input_dim, 512),
-                                             nn.BatchNorm1d(512),
-                                             nn.ReLU(),
-                                             nn.Linear(512, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU())
-        
-        self.decoder = nn.Sequential(nn.Linear(self.latent_dim*2, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU(),
-                                             nn.Linear(256, self.output_dim),
-                                             nn.BatchNorm1d(self.output_dim),
-                                             nn.ReLU())
-
-        if self.hparams['vae']:
-            self.mu_cls = nn.Linear(256, self.latent_dim)
-            self.var_cls = nn.Linear(256, self.latent_dim)
-            self.mu_domain = nn.Linear(256, self.latent_dim)
-            self.var_domain = nn.Linear(256, self.latent_dim)
-
-    def forward(self, x):
-        x_cls = self.encoder_cls(x)
-        x_domain = self.encoder_domain(x)
-        if self.hparams['vae']:
-            z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
-            z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
-            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
-            return x_cls, x_domain, z, kld_cls + kld_domain
-        else:
-            z_cls, z_domain = x_cls, x_domain
-            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
-
-            return x_cls, x_domain, z
-
-    def reparameterize(self, x, mu, var):
-        mean, logvar = mu(x), var(x)
-        std = torch.exp(logvar / 2)
-        kld = - 0.5 * torch.sum(1 + logvar - mean.pow(2) - std) / mean.shape[0]
-        eps = std.data.new(std.size()).normal_()
-
-        z = eps.mul(std).add_(mean)
-        return z, kld
-
-class Cross_VAE(torch.nn.Module):
-    "Cross Variational Autoencoder"
-    def __init__(self, hparams, input_dim, output_dim=256, latent_dim=256):
-        super(Cross_VAE, self).__init__()
-        self.hparams = hparams
-        self.input_dim = input_dim
-        self.output_dim = input_dim
-        self.random_perm = None
-        if not self.hparams['vae']:
-            latent_dim = 256
-        self.latent_dim = latent_dim
-        self.encoder_cls = nn.Sequential(nn.Linear(self.input_dim, 512),
-                                             nn.BatchNorm1d(512),
-                                             nn.ReLU(),
-                                             nn.Linear(512, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU())
-        self.encoder_domain = nn.Sequential(nn.Linear(self.input_dim, 512),
-                                             nn.BatchNorm1d(512),
-                                             nn.ReLU(),
-                                             nn.Linear(512, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU())
-        
-        self.decoder = nn.Sequential(nn.Linear(self.latent_dim*2, 256),
-                                             nn.BatchNorm1d(256),
-                                             nn.ReLU(),
-                                             nn.Linear(256, self.output_dim),
-                                             nn.BatchNorm1d(self.output_dim),
-                                             nn.ReLU())
-
-        if self.hparams['vae']:
-            self.mu_cls = nn.Linear(256, self.latent_dim)
-            self.var_cls = nn.Linear(256, self.latent_dim)
-            self.mu_domain = nn.Linear(256, self.latent_dim)
-            self.var_domain = nn.Linear(256, self.latent_dim)
-
-    def forward(self, x):
-        x_cls = self.encoder_cls(x)
-        x_domain = self.encoder_domain(x)
-        if self.hparams['vae']:
-            z_cls, kld_cls = self.reparameterize(x_cls, self.mu_cls, self.var_cls)
-            z_domain, kld_domain = self.reparameterize(x_domain, self.mu_domain, self.var_domain)
-            if self.hparams['cross']:
-                perm = torch.randperm(len(z_domain))
-                self.random_perm = perm
-                random_domain = z_domain[perm]
-                z_domain = random_domain
-            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
-            if self.hparams['cross']:
-                z_cls = self.encoder_cls(z)
-                z_domain = self.encoder_domain(z)
-                x_cls = torch.cat([x_cls, z_cls], dim=0)
-                x_domain = torch.cat([x_domain, z_domain], dim=0)
-            return x_cls, x_domain, z[0:len(x)], kld_cls + kld_domain
-        else:
-            z_cls, z_domain = x_cls, x_domain
-            if self.hparams['cross']:
-                perm = torch.randperm(len(z_domain))
-                self.random_perm = perm
-                random_domain = z_domain[perm]
-                z_domain = random_domain
-            z = self.decoder(torch.cat([z_cls, z_domain], dim=-1))
-            if self.hparams['cross']:
-                z_cls = self.encoder_cls(z)
-                z_domain = self.encoder_domain(z)
-                x_cls = torch.cat([x_cls, z_cls], dim=0)
-                x_domain = torch.cat([x_domain, z_domain], dim=0)
-            return x_cls, x_domain, z[0:len(x)]
-
-    def reparameterize(self, x, mu, var):
-        mean, logvar = mu(x), var(x)
-        std = torch.exp(logvar / 2)
-        kld = - 0.5 * torch.sum(1 + logvar - mean.pow(2) - std) / mean.shape[0]
-        eps = std.data.new(std.size()).normal_()
-
-        z = eps.mul(std).add_(mean)
-        return z, kld
 
 class LambdaSheduler(nn.Module):
     def __init__(self, gamma=1.0, max_iter=1000, **kwargs):
@@ -479,12 +316,17 @@ class Mixstyle2(Algorithm):
         if hparams["resnet18"]:
             network = resnet18_mixstyle2_L234_p0d5_a0d1()
         else:
-            network = resnet50_mixstyle2_L234_p0d5_a0d1()
+            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
         self.featurizer = networks.ResNet(input_shape, self.hparams, network)
 
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
-        self.optimizer = self.new_optimizer(self.network.parameters())
+        self.optimizer = get_optimizer(
+            hparams["optimizer"],
+            params=self.get_params(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
 
     def pair_batches(self, xs, ys):
         xs = [x.chunk(2) for x in xs]
@@ -522,6 +364,106 @@ class Mixstyle2(Algorithm):
 
     def predict(self, x):
         return self.network(x)
+
+    def get_params(self):
+        params = [
+                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+            ]
+        return params
+    
+class MSMT(Algorithm):
+    """MixStyle w/ domain label"""
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
+        super().__init__(input_shape, num_classes, num_domains, hparams)
+        if hparams["resnet18"]:
+            network = resnet18_mixstyle2_L234_p0d5_a0d1()
+        else:
+            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+        self.featurizer = networks.ResNet(input_shape, self.hparams, network)
+        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        self.network = nn.Sequential(self.featurizer, self.classifier)
+        # Mean Teacher
+        network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+        self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
+        self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
+        preprocess_teacher(self.featurizer, self.featurizer_teacher)
+        preprocess_teacher(self.classifier, self.classifier_teacher)
+
+        self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
+        self.optimizer = get_optimizer(
+            hparams["optimizer"],
+            params=self.get_params(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
+
+    def pair_batches(self, xs, ys):
+        xs = [x.chunk(2) for x in xs]
+        ys = [y.chunk(2) for y in ys]
+        N = len(xs)
+        pairs = []
+        for i in range(N):
+            j = i + 1 if i < (N - 1) else 0
+            xi, yi = xs[i][0], ys[i][0]
+            xj, yj = xs[j][1], ys[j][1]
+
+            pairs.append(((xi, yi), (xj, yj)))
+
+        return pairs
+
+    def update(self, x, y, **kwargs):
+        pairs = self.pair_batches(x, y)
+        loss = 0.0
+        loss_cls = 0.0
+        loss_tea = 0.0 
+
+        for (xi, yi), (xj, yj) in pairs:
+            #  Mixstyle2:
+            #  For the input x, the first half comes from one domain,
+            #  while the second half comes from the other domain.
+            x2 = torch.cat([xi, xj])
+            y2 = torch.cat([yi, yj])
+            
+            self.featurizer.network.set_activation_status(False)
+            self.featurizer_teacher.network.set_activation_status(False)
+            x2_t = self.network_teacher(x2).detach()
+            x2_o = self.network(x2)
+
+            self.featurizer.network.set_activation_status(True)
+            self.featurizer_teacher.network.set_activation_status(True)
+            x2_t_aug = self.network_teacher(x2).detach()
+            x2_o_aug = self.network(x2)
+            loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
+
+            x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
+            x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
+            loss_tea += F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
+
+        loss_cls /= len(pairs)
+        loss_tea /= len(pairs)
+        loss = loss_cls + loss_tea
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        if self.hparams['warm_MT']:
+            warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
+        else:
+            update_teacher(self.network, self.network_teacher)
+        return {"loss": loss.item()}
+
+    def predict(self, x):
+        return self.network(x), self.network_teacher(x)
+
+    def get_params(self):
+        params = [
+                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+            ]
+        return params
 
 
 class ARM(ERM):

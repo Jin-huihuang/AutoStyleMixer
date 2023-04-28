@@ -84,19 +84,11 @@ def main():
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    if hparams['coupling']:
-        coupling = "c"
-        if hparams['mode'] == None:
-            args.unique_name = f"{timestamp}_{args.name}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"    
-        else:
-            args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
-    else:
-        coupling = ''
-        args.unique_name = f"{timestamp}_{args.name}_{hparams['mode']}_{hparams['adv']}_{args.checkpoint_freq}{coupling}_{hparams['lr']}"
+    args.unique_name = f"{timestamp}_{args.name}_{args.checkpoint_freq}_{hparams['lr']}" 
     if hparams['backbone'] == 'ViT':
-        args.unique_name = 'V' + args.unique_name
+        args.unique_name = args.unique_name + 'V'
     else:
-        args.unique_name = 'R' + args.unique_name
+        args.unique_name = args.unique_name + 'R'
     # path setup
     args.work_dir = Path(".")
     args.data_dir = Path(args.data_dir)
@@ -178,7 +170,6 @@ def main():
     # for i in range(len(class_name)):
     #     class_name[i] = class_name[i].replace('_', ' ')
 
-    class_token = []
 
     for test_env in args.test_envs:
         res, records = train(
@@ -188,8 +179,7 @@ def main():
             n_steps=n_steps,
             checkpoint_freq=checkpoint_freq,
             logger=logger,
-            writer=writer,
-            class_token=class_token,
+            writer=writer
         )
         all_records.append(records)
         for k, v in res.items():
