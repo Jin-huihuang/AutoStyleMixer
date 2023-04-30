@@ -86,7 +86,7 @@ class MixStyle2(nn.Module):
     def __repr__(self):
         return f"MixStyle(p={self.p}, alpha={self.alpha}, eps={self.eps})"
 
-    def forward(self, x):
+    def forward(self, x, domain=None, mu_domains=None, var_domains=None, layer=0):
         """
         For the input x, the first half comes from one domain,
         while the second half comes from the other domain.
@@ -113,9 +113,27 @@ class MixStyle2(nn.Module):
         perm_b = perm_b[torch.randperm(B // 2)]
         perm_a = perm_a[torch.randperm(B // 2)]
         perm = torch.cat([perm_b, perm_a], 0)
+        
+        if mu_domains[0]:
+            N = len(mu_domains)
+            B, C, H, W = mu.shape
+            mu_domain1 = mu_domains[domain][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
+            j = domain + 1 if domain < (N - 1) else 0
+            mu_domain2 = mu_domains[j][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
+            mu2 = torch.cat([mu_domain2, mu_domain1])
 
-        mu2, sig2 = mu[perm], sig[perm]
-        mu_mix = mu * lmda + mu2 * (1 - lmda)
-        sig_mix = sig * lmda + sig2 * (1 - lmda)
+            var_domain1 = var_domains[domain][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
+            j = domain + 1 if domain < (N - 1) else 0
+            var_domain2 = var_domains[j][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
+            sig2 = torch.cat([var_domain2, var_domain1])
 
-        return x_normed * sig_mix + mu_mix
+            mu_mix = mu * lmda + mu2 * (1 - lmda)
+            sig_mix = sig * lmda + sig2 * (1 - lmda)
+
+            return x_normed * sig_mix + mu_mix
+        else:
+            mu2, sig2 = mu[perm], sig[perm]
+            mu_mix = mu * lmda + mu2 * (1 - lmda)
+            sig_mix = sig * lmda + sig2 * (1 - lmda)
+
+            return x_normed * sig_mix + mu_mix

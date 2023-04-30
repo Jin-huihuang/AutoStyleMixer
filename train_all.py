@@ -79,7 +79,7 @@ def main():
     # setup debug
     if args.debug:
         # hparams['batch_size'] = 1
-        args.checkpoint_freq = 5
+        args.checkpoint_freq = 1
         args.steps = 10
         args.name += "_debug"
 
@@ -89,6 +89,12 @@ def main():
         args.unique_name = args.unique_name + 'V'
     else:
         args.unique_name = args.unique_name + 'R'
+    if hparams['unlr']:
+        args.unique_name = args.unique_name + '1'
+    else:
+        args.unique_name = args.unique_name + '0'
+    if hparams['mix_layers'] != []:
+        args.unique_name = args.unique_name + '_M'
     # path setup
     args.work_dir = Path(".")
     args.data_dir = Path(args.data_dir)

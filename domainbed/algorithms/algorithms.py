@@ -419,8 +419,11 @@ class MSMT(Algorithm):
         loss = 0.0
         loss_cls = 0.0
         loss_tea = 0.0 
-
-        for (xi, yi), (xj, yj) in pairs:
+        mu = []
+        var = []
+        mu_t = []
+        var_t = []
+        for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
             #  Mixstyle2:
             #  For the input x, the first half comes from one domain,
             #  while the second half comes from the other domain.
@@ -432,8 +435,8 @@ class MSMT(Algorithm):
             x2_t = self.network_teacher(x2).detach()
             x2_o = self.network(x2)
 
-            self.featurizer.network.set_activation_status(True)
-            self.featurizer_teacher.network.set_activation_status(True)
+            self.featurizer.network.set_activation_status(True, i)
+            self.featurizer_teacher.network.set_activation_status(True, i)
             x2_t_aug = self.network_teacher(x2).detach()
             x2_o_aug = self.network(x2)
             loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
@@ -448,6 +451,8 @@ class MSMT(Algorithm):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        self.featurizer.network.update_buffers()
+        self.featurizer_teacher.network.update_buffers()
         
         if self.hparams['warm_MT']:
             warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
@@ -464,6 +469,7 @@ class MSMT(Algorithm):
                 {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
             ]
         return params
+    
 
 
 class ARM(ERM):

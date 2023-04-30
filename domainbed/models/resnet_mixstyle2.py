@@ -109,16 +109,29 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.global_avgpool = nn.AdaptiveAvgPool2d(1)
+        self.domain = None
 
         self.mixstyle = None
         self._activated = True
+        self.eps = 1e-6
+        self.mu = []
+        self.var = []
+        self.style_mus = []
+        self.style_vars = []
         if mixstyle_layers:
             self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha)
             for layer_name in mixstyle_layers:
                 assert layer_name in ["conv1", "conv2_x", "conv3_x", "conv4_x", "conv5_x"]
+                mean_buffer = None
+                var_buffer = None
+                self.register_buffer('style_mean_' + layer_name, mean_buffer) # (N, C) N domains, C channels
+                self.style_mus.append(self._buffers['style_mean_' + layer_name])
+                self.register_buffer('style_var_' + layer_name, var_buffer)
+                self.style_vars.append(self._buffers['style_var_' + layer_name])
+
             print("Insert MixStyle after the following layers: {}".format(mixstyle_layers))
         self.mixstyle_layers = mixstyle_layers
-
+        
         self._out_features = 512 * block.expansion
         self.fc = nn.Identity()  # for DomainBed compatibility
 
@@ -168,8 +181,9 @@ class ResNet(nn.Module):
         sig = x.std(dim=[2, 3])
         return torch.cat([mu, sig], 1)
     
-    def set_activation_status(self, status=True):
+    def set_activation_status(self, status=True, domain=None):
         self._activated = status
+        self.domain = domain
 
     def featuremaps(self, x):
         x = self.conv1(x)
@@ -177,28 +191,69 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
+        mu = []
+        var = []
         x = self.layer1(x)
-        if "conv2_x" in self.mixstyle_layers and self._activated:
-            x = self.mixstyle(x)
+        l = 0
+        if "conv2_x" in self.mixstyle_layers:
+            if self._activated:
+                x = self.mixstyle(x, self.domain, self.style_mus, self.style_vars, layer=l)
+                l+=1
+            else:
+                mu.append(x.mean(dim=[0, 2, 3]).detach())
+                var.append((x.var(dim=[0, 2, 3]) + self.eps).sqrt().detach())
 
         x = self.layer2(x)
-        if "conv3_x" in self.mixstyle_layers and self._activated:
-            x = self.mixstyle(x)
+        if "conv3_x" in self.mixstyle_layers:
+            if self._activated:
+                x = self.mixstyle(x, self.domain, self.style_mus, self.style_vars, layer=l)
+                l+=1
+            else:
+                mu.append(x.mean(dim=[0, 2, 3]).detach())
+                var.append((x.var(dim=[0, 2, 3]) + self.eps).sqrt().detach())
 
         x = self.layer3(x)
-        if "conv4_x" in self.mixstyle_layers and self._activated:
-            x = self.mixstyle(x)
+        if "conv4_x" in self.mixstyle_layers:
+            if self._activated:
+                x = self.mixstyle(x, self.domain, self.style_mus, self.style_vars, layer=l)
+                l+=1
+            else:
+                mu.append(x.mean(dim=[0, 2, 3]).detach())
+                var.append((x.var(dim=[0, 2, 3]) + self.eps).sqrt().detach())
 
         x = self.layer4(x)
-        if "conv5_x" in self.mixstyle_layers and self._activated:
-            x = self.mixstyle(x)
-
+        if "conv5_x" in self.mixstyle_layers:
+            if self._activated:
+                x = self.mixstyle(x, self.domain, self.style_mus, self.style_vars, layer=l)
+                l+=1
+            else:
+                mu.append(x.mean(dim=[0, 2, 3]).detach())
+                var.append((x.var(dim=[0, 2, 3]) + self.eps).sqrt().detach())
+        if not self._activated:
+            self.mu.append(mu)
+            self.var.append(var)
         return x
 
     def forward(self, x):
         f = self.featuremaps(x)
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
+    
+    def update_buffers(self, momentun=0.5):
+        if self.style_mus[0]:
+            for l1, l2 in zip(self.style_mus, self.mu): # domain
+                for i, (x, y) in enumerate(zip(l1, l2)): # layer
+                    l1[i] = momentun * x + (1. - momentun) * y
+            for l1, l2 in zip(self.style_vars, self.var): # domain
+                for i, (x, y) in enumerate(zip(l1, l2)): # layer
+                    l1[i] = momentun * x + (1. - momentun) * y
+        else:
+            self.style_mus = self.mu
+            self.style_vars = self.var
+        self.mu = []
+        self.var = []
+            
+
 
 
 def init_pretrained_weights(model, model_url):
