@@ -239,7 +239,7 @@ class ResNet(nn.Module):
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
     
-    def update_buffers(self, momentun=0.5):
+    def update_buffers(self, momentun=0.9):
         if self.style_mus[0]:
             for l1, l2 in zip(self.style_mus, self.mu): # domain
                 for i, (x, y) in enumerate(zip(l1, l2)): # layer

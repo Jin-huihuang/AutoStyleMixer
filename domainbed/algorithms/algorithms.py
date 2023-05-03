@@ -451,8 +451,8 @@ class MSMT(Algorithm):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        self.featurizer.network.update_buffers()
-        self.featurizer_teacher.network.update_buffers()
+        self.featurizer.network.update_buffers(momentun=self.hparams["momentun_style"])
+        self.featurizer_teacher.network.update_buffers(momentun=self.hparams["momentun_style"])
         
         if self.hparams['warm_MT']:
             warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])

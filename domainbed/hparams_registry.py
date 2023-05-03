@@ -29,6 +29,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["mix_layers"]=(["conv2_x", "conv3_x", "conv4_x"], ["conv2_x", "conv3_x", "conv4_x"])
     hparams["mix_p"]=(0.5, 0.5)
     hparams["mix_a"]=(0.3, 0.3)
+    hparams['momentun_style'] = (0.9, 0.9)
     hparams['T'] = (10, 10)
     hparams['warm_MT'] = (False, False)
     hparams['steps'] = (5000, 5000)
