@@ -321,6 +321,15 @@ class Mixstyle2(Algorithm):
 
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
+        # Mean Teacher
+        if self.hparams['MT']:
+            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
+            self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
+            preprocess_teacher(self.featurizer, self.featurizer_teacher)
+            preprocess_teacher(self.classifier, self.classifier_teacher)
+            self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
+
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
@@ -345,20 +354,51 @@ class Mixstyle2(Algorithm):
     def update(self, x, y, **kwargs):
         pairs = self.pair_batches(x, y)
         loss = 0.0
+        loss_cls = 0.0
+        loss_tea = 0.0 
+        if self.hparams['MT']:
+            for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
+                #  Mixstyle2:
+                #  For the input x, the first half comes from one domain,
+                #  while the second half comes from the other domain.
+                x2 = torch.cat([xi, xj])
+                y2 = torch.cat([yi, yj])
+                
+                self.featurizer.network.set_activation_status(False)
+                self.featurizer_teacher.network.set_activation_status(False)
+                x2_t = self.network_teacher(x2).detach()
+                x2_o = self.network(x2)
 
-        for (xi, yi), (xj, yj) in pairs:
-            #  Mixstyle2:
-            #  For the input x, the first half comes from one domain,
-            #  while the second half comes from the other domain.
-            x2 = torch.cat([xi, xj])
-            y2 = torch.cat([yi, yj])
-            loss += F.cross_entropy(self.predict(x2), y2)
+                self.featurizer.network.set_activation_status(True, i)
+                self.featurizer_teacher.network.set_activation_status(True, i)
+                x2_t_aug = self.network_teacher(x2).detach()
+                x2_o_aug = self.network(x2)
+                loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
 
-        loss /= len(pairs)
+                x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
+                x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
+                loss_tea += F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
+        else:
+            for (xi, yi), (xj, yj) in pairs:
+                #  Mixstyle2:
+                #  For the input x, the first half comes from one domain,
+                #  while the second half comes from the other domain.
+                x2 = torch.cat([xi, xj])
+                y2 = torch.cat([yi, yj])
+                loss_cls += F.cross_entropy(self.predict(x2), y2)
 
+        loss_cls /= len(pairs)
+        loss_tea /= len(pairs)
+        loss = loss_cls + loss_tea
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+        if self.hparams['MT']:
+            if self.hparams['warm_MT']:
+                warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
+            else:
+                update_teacher(self.network, self.network_teacher)
 
         return {"loss": loss.item()}
 
@@ -391,8 +431,8 @@ class MSMT(Algorithm):
         self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
         preprocess_teacher(self.featurizer, self.featurizer_teacher)
         preprocess_teacher(self.classifier, self.classifier_teacher)
-
         self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
+        
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
@@ -419,10 +459,7 @@ class MSMT(Algorithm):
         loss = 0.0
         loss_cls = 0.0
         loss_tea = 0.0 
-        mu = []
-        var = []
-        mu_t = []
-        var_t = []
+
         for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
             #  Mixstyle2:
             #  For the input x, the first half comes from one domain,
