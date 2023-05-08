@@ -65,7 +65,7 @@ class MixStyle2(nn.Module):
       Zhou et al. Domain Generalization with MixStyle. ICLR 2021.
     """
 
-    def __init__(self, p=0.5, alpha=0.3, eps=1e-6):
+    def __init__(self, p=0.5, alpha=0.3, eps=1e-6, lmda=None):
         """
         Args:
           p (float): probability of using MixStyle.
@@ -77,6 +77,7 @@ class MixStyle2(nn.Module):
         self.beta = torch.distributions.Beta(alpha, alpha)
         self.eps = eps
         self.alpha = alpha
+        self.lmda = lmda
         self._activated = True
 
         print("* MixStyle params")
@@ -105,7 +106,10 @@ class MixStyle2(nn.Module):
         mu, sig = mu.detach(), sig.detach()
         x_normed = (x - mu) / sig
 
-        lmda = self.beta.sample((B, 1, 1, 1))
+        if self.lmda:
+            lmda = torch.full((B, 1, 1, 1),self.lmda[layer])
+        else:
+            lmda = self.beta.sample((B, 1, 1, 1))
         lmda = lmda.to(x.device)
 
         perm = torch.arange(B - 1, -1, -1)  # inverse index
@@ -123,7 +127,6 @@ class MixStyle2(nn.Module):
             mu2 = torch.cat([mu_domain2, mu_domain1])
 
             var_domain1 = var_domains[domain][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
-            j = domain + 1 if domain < (N - 1) else 0
             var_domain2 = var_domains[j][layer].unsqueeze(0).unsqueeze(-1).unsqueeze(-1).repeat(16, 1, 1, 1)
             sig2 = torch.cat([var_domain2, var_domain1])
 

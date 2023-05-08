@@ -25,7 +25,7 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
         y = batch["y"].to(device)
 
         with torch.no_grad():
-            if hparams['algorithm'] == 'MSMT':
+            if hparams['MT']:
                 logits, logits_t = algorithm.predict(x)
                 loss = F.cross_entropy(logits, y).item()
                 loss_t = F.cross_entropy(logits_t, y).item()
@@ -35,7 +35,7 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
 
         B = len(x)
         losssum += loss * B
-        if hparams['algorithm'] == 'MSMT':
+        if hparams['MT']:
             losssum_t += loss_t*B
 
         if weights is None:
@@ -48,7 +48,7 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
             correct += (logits.gt(0).eq(y).float() * batch_weights).sum().item()
         else:
             correct += (logits.argmax(1).eq(y).float() * batch_weights).sum().item()
-        if hparams['algorithm'] == 'MSMT':
+        if hparams['MT']:
             if logits.size(1) == 1:
                 correct_t += (logits_t.gt(0).eq(y).float() * batch_weights).sum().item()
             else:

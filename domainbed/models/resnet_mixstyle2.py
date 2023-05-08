@@ -119,7 +119,7 @@ class ResNet(nn.Module):
         self.style_mus = []
         self.style_vars = []
         if mixstyle_layers:
-            self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha)
+            self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha, lmda=kwargs["hparams"]['lmda'])
             for layer_name in mixstyle_layers:
                 assert layer_name in ["conv1", "conv2_x", "conv3_x", "conv4_x", "conv5_x"]
                 mean_buffer = None
@@ -276,9 +276,10 @@ def resnet18_mixstyle2_L234_p0d5_a0d1(pretrained=True, **kwargs):
     model = ResNet(
         block=BasicBlock,
         layers=[2, 2, 2, 2],
-        mixstyle_layers=["conv2_x", "conv3_x", "conv4_x"],
-        mixstyle_p=0.5,
-        mixstyle_alpha=0.1,
+        mixstyle_layers=kwargs["hparams"]["mix_layers"],
+        mixstyle_p=kwargs["hparams"]["mix_p"],
+        mixstyle_alpha=kwargs["hparams"]["mix_a"],
+        **kwargs
     )
 
     if pretrained:
@@ -294,6 +295,7 @@ def resnet50_mixstyle2_L234_p0d5_a0d1(pretrained=True, **kwargs):
         mixstyle_layers=kwargs["hparams"]["mix_layers"],
         mixstyle_p=kwargs["hparams"]["mix_p"],
         mixstyle_alpha=kwargs["hparams"]["mix_a"],
+        **kwargs
     )
 
     if pretrained:

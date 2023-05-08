@@ -32,7 +32,9 @@ def _hparams(algorithm, dataset, random_state):
     hparams['momentun_style'] = (0.9, 0.9)
     hparams['T'] = (10, 10)
     hparams['warm_MT'] = (False, False)
+    hparams['MT'] = (True, True)
     hparams['steps'] = (5000, 5000)
+    hparams['lmda'] = (None, None)
 
     hparams["Linear_cls"] = (False, False)
     hparams["tp"] = (True, True)
