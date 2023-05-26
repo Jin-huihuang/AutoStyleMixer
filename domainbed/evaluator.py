@@ -109,6 +109,7 @@ class Evaluator:
         summaries["test_out"] = 0.0
         summaries["train_in"] = 0.0
         summaries["train_out"] = 0.0
+        summaries["train_outMT"] = 0.0
 
         summaries["test_inMT"] = 0.0
         summaries["test_outMT"] = 0.0
@@ -134,6 +135,7 @@ class Evaluator:
 
             if env_num in self.train_envs:
                 summaries["train_" + inout] += acc / n_train_envs
+                summaries["train_" + inout + 'MT'] += acc_t / n_train_envs
                 if inout == "out":
                     summaries["tr_" + inout + "loss"] += loss / n_train_envs
             elif is_test:

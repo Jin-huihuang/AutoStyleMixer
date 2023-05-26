@@ -70,12 +70,12 @@ def main():
 
     # setup hparams
     hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
-
+    
     keys = ["config.yaml"] + args.configs
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
-
+    print(hparams)
     # setup debug
     if args.debug:
         # hparams['batch_size'] = 1
@@ -84,7 +84,7 @@ def main():
         args.name += "_debug"
 
     timestamp = misc.timestamp()
-    args.unique_name = f"{timestamp}_{args.name}_{args.checkpoint_freq}_{hparams['lr']}" 
+    args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{args.checkpoint_freq}_{hparams['lr']}" 
     if hparams['backbone'] == 'ViT':
         args.unique_name = args.unique_name + 'V'
     else:
@@ -144,7 +144,7 @@ def main():
     # Real dataset will be re-assigned in train function.
     # test_envs only decide transforms; simply set to zero.
     dataset, _in_splits, _out_splits = get_dataset([0], args, hparams)
-
+    hparams['domain_num'] = len(dataset)
     # print dataset information
     logger.nofmt("Dataset:")
     logger.nofmt(f"\t[{args.dataset}] #envs={len(dataset)}, #classes={dataset.num_classes}")

@@ -14,6 +14,7 @@ def _hparams(algorithm, dataset, random_state):
 
     hparams['algorithm'] = (algorithm, algorithm)
     hparams['dataset'] = (dataset, dataset)
+    hparams['domain_num'] = (4, 4)
     hparams["data_augmentation"] = (True, True)
     hparams["val_augment"] = (False, False)  # augmentation for in-domain validation set
     hparams["resnet18"] = (False, False)
@@ -27,10 +28,12 @@ def _hparams(algorithm, dataset, random_state):
     hparams["use_lambda_scheduler"] = (True, True)
     hparams['model_name'] = ('small', 'small')
     hparams["mix_layers"]=(["conv2_x", "conv3_x", "conv4_x"], ["conv2_x", "conv3_x", "conv4_x"])
+    hparams['Mix_T'] = (10, 10)
     hparams["mix_p"]=(0.5, 0.5)
     hparams["mix_a"]=(0.3, 0.3)
     hparams['momentun_style'] = (0.9, 0.9)
     hparams['T'] = (10, 10)
+    hparams['initial_value'] = (0.5, 0.5)
     hparams['warm_MT'] = (False, False)
     hparams['MT'] = (True, True)
     hparams['steps'] = (5000, 5000)

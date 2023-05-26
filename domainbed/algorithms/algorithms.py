@@ -103,36 +103,20 @@ class ERM(Algorithm):
         all_y = torch.cat(y)
         self.optimizer.zero_grad()
 
-        with autocast():
-            loss = F.cross_entropy(self.predict(all_x), all_y)
+        loss = F.cross_entropy(self.predict(all_x), all_y)
         loss.backward()
-        # CLIP model is float16
-        if self.hparams["CLIP"]:
-            self.featurizer.float()
         self.optimizer.step()
-        if self.hparams["CLIP"]:
-            convert_weights(self.featurizer)
 
         return {"loss": loss.item()}
 
     def predict(self, x):
-        
-        if self.hparams["CLIP"]:
-            with autocast():
-                return self.classifier(self.featurizer.forward_features(x))
         return self.network(x)
 
     def get_params(self):
-        if self.hparams["CLIP"]:
-            params = [
-                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"], 'eps': 1e-5}
-                ]
-        else:
-            params = [
-                    {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                    {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
-                ]
+        params = [
+                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+            ]
         return params
     
 class MHDG(Algorithm):
@@ -314,7 +298,7 @@ class Mixstyle2(Algorithm):
         assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
         super().__init__(input_shape, num_classes, num_domains, hparams)
         if hparams["resnet18"]:
-            network = resnet18_mixstyle2_L234_p0d5_a0d1()
+            network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
         else:
             network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
         self.featurizer = networks.ResNet(input_shape, self.hparams, network)
@@ -524,7 +508,97 @@ class MSMT(Algorithm):
                 {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
             ]
         return params
-    
+
+class MSMT2(Algorithm):
+    """MixStyle w/ domain label"""
+
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
+        super().__init__(input_shape, num_classes, num_domains, hparams)
+        if hparams["resnet18"]:
+            network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+        else:
+            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+        self.featurizer = networks.ResNet(input_shape, self.hparams, network)
+        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
+        self.network = nn.Sequential(self.featurizer, self.classifier)
+        # Mean Teacher
+        if self.hparams['MT']:    
+            if hparams["resnet18"]:
+                network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            else:
+                network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
+            self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
+            preprocess_teacher(self.featurizer, self.featurizer_teacher)
+            preprocess_teacher(self.classifier, self.classifier_teacher)
+            self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
+        
+        self.optimizer = get_optimizer(
+            hparams["optimizer"],
+            params=self.get_params(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams["weight_decay"],
+        )
+
+    def update(self, x, y, **kwargs):
+        loss = 0.0
+        loss_cls = 0.0
+        loss_tea = 0.0
+        x2 = torch.cat(x)
+        y2 = torch.cat(y)
+
+        if self.hparams['MT']:            
+            self.featurizer.network.set_activation_status(False)
+            self.featurizer_teacher.network.set_activation_status(False)
+            x2_t = self.network_teacher(x2).detach()
+            x2_o = self.network(x2)
+
+            self.featurizer.network.set_activation_status(True)
+            self.featurizer_teacher.network.set_activation_status(True)
+            x2_t_aug = self.network_teacher(x2).detach()
+            x2_o_aug = self.network(x2)
+            loss_cls = F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
+
+            x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
+            x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
+            loss_tea = F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
+        else:
+            x2_o = self.network(x2)
+            loss_cls = F.cross_entropy(x2_o, y2)
+            # self.featurizer.network.set_activation_status(False)
+            # x2_o = self.network(x2)
+            # self.featurizer.network.set_activation_status(True)
+            # x2_aug = self.network(x2)
+            # loss_cls = F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_aug, y2)
+            # x2_o, x2_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_aug / self.hparams['T'], dim=1)
+            # loss_cls += F.kl_div(x2_o.log(), x2_aug, reduction='batchmean')
+        loss = loss_cls + loss_tea
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        if self.hparams['MT']:
+            self.featurizer_teacher.network.update_buffers(momentun=self.hparams["momentun_style"])
+            if self.hparams['warm_MT']:
+                warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
+            else:
+                update_teacher(self.network, self.network_teacher)
+            return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_t": loss_tea.item()}
+        else:
+            return {"loss": loss.item(), "loss_s": loss_cls.item()}
+
+    def predict(self, x):
+        if self.hparams['MT']:
+            return self.network(x), self.network_teacher(x)
+        return self.network(x)
+
+    def get_params(self):
+        params = [
+                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
+                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
+            ]
+        return params
+
 
 
 class ARM(ERM):

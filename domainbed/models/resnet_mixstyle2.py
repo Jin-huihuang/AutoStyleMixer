@@ -119,7 +119,7 @@ class ResNet(nn.Module):
         self.style_mus = []
         self.style_vars = []
         if mixstyle_layers:
-            self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha, lmda=kwargs["hparams"]['lmda'])
+            self.mixstyle = MixStyle(p=mixstyle_p, T=kwargs['hparams']['Mix_T'], lmda=kwargs["hparams"]['lmda'])
             for layer_name in mixstyle_layers:
                 assert layer_name in ["conv1", "conv2_x", "conv3_x", "conv4_x", "conv5_x"]
                 mean_buffer = None
@@ -252,7 +252,129 @@ class ResNet(nn.Module):
             self.style_vars = self.var
         self.mu = []
         self.var = []
-            
+
+
+class ResNet2(nn.Module):
+    def __init__(
+        self, block, layers, mixstyle_layers=[], mixstyle_p=0.5, mixstyle_alpha=0.3, **kwargs
+    ):
+        num_features = dict()
+        self.inplanes = 64
+        super().__init__()
+
+        # backbone network
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        num_features["conv1"] = 64
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        num_features["conv2_x"] = self.inplanes
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        num_features["conv3_x"] = self.inplanes
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        num_features["conv4_x"] = self.inplanes
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        num_features["conv5_x"] = self.inplanes
+
+        self.global_avgpool = nn.AdaptiveAvgPool2d(1)
+        self.mixstyle_layers = mixstyle_layers
+        self.stymix = nn.ModuleDict([])
+        for layer_name in mixstyle_layers:
+            self.stymix[layer_name] = MixStyle(
+                initial_value=kwargs['hparams']['initial_value'], 
+                T=kwargs['hparams']['Mix_T'],
+                num_features=num_features[layer_name],
+                domain_n=kwargs['hparams']['domain_num'], 
+                momentun=kwargs['hparams']["momentun_style"]
+                )
+
+        self._activated = True
+
+        self._out_features = 512 * block.expansion
+        self.fc = nn.Identity()  # for DomainBed compatibility
+
+        self._init_params()
+
+    def _make_layer(self, block, planes, blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(
+                    self.inplanes,
+                    planes * block.expansion,
+                    kernel_size=1,
+                    stride=stride,
+                    bias=False,
+                ),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for i in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def _init_params(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+    def compute_style(self, x):
+        mu = x.mean(dim=[2, 3])
+        sig = x.std(dim=[2, 3])
+        return torch.cat([mu, sig], 1)
+    
+    def set_activation_status(self, status=True, domain=None):
+        self._activated = status
+        self.domain = domain
+
+    def featuremaps(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        if "conv1" in self.mixstyle_layers and self._activated:
+            x = self.stymix["conv1"](x)
+
+        x = self.layer1(x)
+        if "conv2_x" in self.mixstyle_layers and self._activated:
+            x = self.stymix["conv2_x"](x)
+
+        x = self.layer2(x)
+        if "conv3_x" in self.mixstyle_layers and self._activated:
+            x = self.stymix["conv3_x"](x)
+
+        x = self.layer3(x)
+        if "conv4_x" in self.mixstyle_layers and self._activated:
+            x = self.stymix["conv4_x"](x)
+
+        x = self.layer4(x)
+        if "conv5_x" in self.mixstyle_layers and self._activated:
+            x = self.stymix["conv5_x"](x)
+
+        return x
+
+    def forward(self, x):
+        f = self.featuremaps(x)
+        v = self.global_avgpool(f)
+        return v.view(v.size(0), -1)
+
 
 
 
@@ -289,7 +411,7 @@ def resnet18_mixstyle2_L234_p0d5_a0d1(pretrained=True, **kwargs):
 
 
 def resnet50_mixstyle2_L234_p0d5_a0d1(pretrained=True, **kwargs):
-    model = ResNet(
+    model = ResNet2(
         block=Bottleneck,
         layers=[3, 4, 6, 3],
         mixstyle_layers=kwargs["hparams"]["mix_layers"],
