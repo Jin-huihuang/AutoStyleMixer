@@ -174,7 +174,7 @@ class MixStyle2(nn.Module):
     def __repr__(self):
         return f"MixStyle(p={self.p}, alpha={self.alpha}, eps={self.eps})"
 
-    def forward(self, x):
+    def forward(self, x, activated=False):
         """
         For the input x, the first half comes from one domain,
         while the second half comes from the other domain.
@@ -192,10 +192,13 @@ class MixStyle2(nn.Module):
         new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True)
         mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
         
-        if self._buffers['statistics'] is not None:
-            self._buffers['statistics'] = self._buffers['statistics']*self.momentun + new_statistics*(1-self.momentun)
-        else:
-            self._buffers['statistics'] = new_statistics
+        # EMA statistics
+        if not activated:
+            if self._buffers['statistics'] is not None:
+                self._buffers['statistics'] = self._buffers['statistics']*self.momentun + new_statistics*(1-self.momentun)
+            else:
+                self._buffers['statistics'] = new_statistics
+            return x
             
         # mix_style, shuffle
         perm = torch.randperm(self.domain_n)

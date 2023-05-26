@@ -551,12 +551,12 @@ class MSMT2(Algorithm):
         if self.hparams['MT']:            
             self.featurizer.network.set_activation_status(False)
             self.featurizer_teacher.network.set_activation_status(False)
-            x2_t = self.network_teacher(x2).detach()
+            x2_t = self.network_teacher(x2)
             x2_o = self.network(x2)
 
             self.featurizer.network.set_activation_status(True)
             self.featurizer_teacher.network.set_activation_status(True)
-            x2_t_aug = self.network_teacher(x2).detach()
+            x2_t_aug = self.network_teacher(x2)
             x2_o_aug = self.network(x2)
             loss_cls = F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
 
@@ -578,7 +578,6 @@ class MSMT2(Algorithm):
         loss.backward()
         self.optimizer.step()
         if self.hparams['MT']:
-            self.featurizer_teacher.network.update_buffers(momentun=self.hparams["momentun_style"])
             if self.hparams['warm_MT']:
                 warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
             else:

@@ -349,24 +349,24 @@ class ResNet2(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        if "conv1" in self.mixstyle_layers and self._activated:
-            x = self.stymix["conv1"](x)
+        if "conv1" in self.mixstyle_layers:
+            x = self.stymix["conv1"](x, self._activated)
 
         x = self.layer1(x)
-        if "conv2_x" in self.mixstyle_layers and self._activated:
-            x = self.stymix["conv2_x"](x)
+        if "conv2_x" in self.mixstyle_layers:
+            x = self.stymix["conv2_x"](x, self._activated)
 
         x = self.layer2(x)
-        if "conv3_x" in self.mixstyle_layers and self._activated:
-            x = self.stymix["conv3_x"](x)
+        if "conv3_x" in self.mixstyle_layers:
+            x = self.stymix["conv3_x"](x, self._activated)
 
         x = self.layer3(x)
-        if "conv4_x" in self.mixstyle_layers and self._activated:
-            x = self.stymix["conv4_x"](x)
+        if "conv4_x" in self.mixstyle_layers:
+            x = self.stymix["conv4_x"](x, self._activated)
 
         x = self.layer4(x)
-        if "conv5_x" in self.mixstyle_layers and self._activated:
-            x = self.stymix["conv5_x"](x)
+        if "conv5_x" in self.mixstyle_layers:
+            x = self.stymix["conv5_x"](x, self._activated)
 
         return x
 
