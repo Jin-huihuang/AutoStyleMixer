@@ -107,12 +107,12 @@ class Evaluator:
         # for key order
         summaries["test_in"] = 0.0
         summaries["test_out"] = 0.0
-        summaries["train_in"] = 0.0
-        summaries["train_out"] = 0.0
-        summaries["train_outMT"] = 0.0
-
         summaries["test_inMT"] = 0.0
         summaries["test_outMT"] = 0.0
+        
+        summaries["train_out"] = 0.0
+        summaries["train_outMT"] = 0.0
+        summaries["train_in"] = 0.0
         accuracies = {}
         losses = {}
 

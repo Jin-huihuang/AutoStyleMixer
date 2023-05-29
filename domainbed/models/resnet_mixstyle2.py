@@ -260,6 +260,7 @@ class ResNet2(nn.Module):
     ):
         num_features = dict()
         self.inplanes = 64
+        self.hparams = kwargs["hparams"]
         super().__init__()
 
         # backbone network
@@ -282,11 +283,12 @@ class ResNet2(nn.Module):
         self.stymix = nn.ModuleDict([])
         for layer_name in mixstyle_layers:
             self.stymix[layer_name] = MixStyle(
-                initial_value=kwargs['hparams']['initial_value'], 
-                T=kwargs['hparams']['Mix_T'],
+                initial_value=self.hparams['initial_value'], 
+                T=self.hparams['Mix_T'],
                 num_features=num_features[layer_name],
-                domain_n=kwargs['hparams']['domain_num'], 
-                momentun=kwargs['hparams']["momentun_style"]
+                domain_n=self.hparams['domain_num'], 
+                momentun=self.hparams["momentun_style"],
+                MT=self.hparams['MT']
                 )
 
         self._activated = True

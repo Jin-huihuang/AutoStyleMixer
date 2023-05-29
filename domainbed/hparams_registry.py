@@ -35,7 +35,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams['T'] = (10, 10)
     hparams['initial_value'] = (0.5, 0.5)
     hparams['warm_MT'] = (False, False)
-    hparams['MT'] = (True, True)
+    hparams['MT'] = (False, False)
     hparams['steps'] = (5000, 5000)
     hparams['lmda'] = (None, None)
 

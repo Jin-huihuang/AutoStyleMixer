@@ -28,6 +28,7 @@ def update_teacher(model, teacher, momentum=0.9995):
     teacher_dict = teacher.state_dict()
     for (k_q, v_q), (k_k, v_k) in zip(model_dict.items(), teacher_dict.items()):
         assert k_k == k_q, "state_dict names are different!"
+        # if k_q.endswith('statistics'): continue
         if 'num_batches_tracked' in k_k:
             v_k.copy_(v_q)
         else:

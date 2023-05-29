@@ -148,7 +148,7 @@ class MixStyle2(nn.Module):
       Zhou et al. Domain Generalization with MixStyle. ICLR 2021.
     """
 
-    def __init__(self, initial_value=0.5, T=0.3, eps=1e-6, lmda=None, num_features=None, domain_n=None, momentun=0.9):
+    def __init__(self, initial_value=0.5, T=0.3, eps=1e-6, lmda=None, num_features=None, domain_n=None, momentun=0.9, **kwargs):
         """
         Args:
           p (float): probability of using MixStyle.
@@ -161,6 +161,7 @@ class MixStyle2(nn.Module):
         self.lmda = lmda
         self.momentun = momentun
         self._activated = True
+        self.MT = kwargs['MT']
 
         self.domain_n = domain_n - 1 # leave-one-out
         self.register_buffer("statistics", None) # dim 2 denote (mean, var)
@@ -193,12 +194,13 @@ class MixStyle2(nn.Module):
         mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
         
         # EMA statistics
-        if not activated:
+        if not activated or not self.MT:
             if self._buffers['statistics'] is not None:
                 self._buffers['statistics'] = self._buffers['statistics']*self.momentun + new_statistics*(1-self.momentun)
             else:
                 self._buffers['statistics'] = new_statistics
-            return x
+            if self.MT:    
+                return x
             
         # mix_style, shuffle
         perm = torch.randperm(self.domain_n)
