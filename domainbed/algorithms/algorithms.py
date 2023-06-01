@@ -398,117 +398,6 @@ class Mixstyle2(Algorithm):
             ]
         return params
     
-class MSMT(Algorithm):
-    """MixStyle w/ domain label"""
-
-    def __init__(self, input_shape, num_classes, num_domains, hparams):
-        assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
-        super().__init__(input_shape, num_classes, num_domains, hparams)
-        if hparams["resnet18"]:
-            network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
-        else:
-            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
-        self.featurizer = networks.ResNet(input_shape, self.hparams, network)
-        self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
-        self.network = nn.Sequential(self.featurizer, self.classifier)
-        # Mean Teacher
-        if self.hparams['MT']:    
-            if hparams["resnet18"]:
-                network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
-            else:
-                network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
-            self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
-            self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
-            preprocess_teacher(self.featurizer, self.featurizer_teacher)
-            preprocess_teacher(self.classifier, self.classifier_teacher)
-            self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
-        
-        self.optimizer = get_optimizer(
-            hparams["optimizer"],
-            params=self.get_params(),
-            lr=self.hparams["lr"],
-            weight_decay=self.hparams["weight_decay"],
-        )
-
-    def pair_batches(self, xs, ys):
-        xs = [x.chunk(2) for x in xs]
-        ys = [y.chunk(2) for y in ys]
-        N = len(xs)
-        pairs = []
-        for i in range(N):
-            j = i + 1 if i < (N - 1) else 0
-            xi, yi = xs[i][0], ys[i][0]
-            xj, yj = xs[j][1], ys[j][1]
-
-            pairs.append(((xi, yi), (xj, yj)))
-
-        return pairs
-
-    def update(self, x, y, **kwargs):
-        pairs = self.pair_batches(x, y)
-        loss = 0.0
-        loss_cls = 0.0
-        loss_tea = 0.0
-
-        if self.hparams['MT']:
-            for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
-                x2 = torch.cat([xi, xj])
-                y2 = torch.cat([yi, yj])
-                
-                self.featurizer.network.set_activation_status(False)
-                self.featurizer_teacher.network.set_activation_status(False)
-                x2_t = self.network_teacher(x2).detach()
-                x2_o = self.network(x2)
-
-                self.featurizer.network.set_activation_status(True, i)
-                self.featurizer_teacher.network.set_activation_status(True, i)
-                x2_t_aug = self.network_teacher(x2).detach()
-                x2_o_aug = self.network(x2)
-                loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
-
-                x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
-                x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
-                loss_tea += F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
-        else:
-            for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
-                x2 = torch.cat([xi, xj])
-                y2 = torch.cat([yi, yj])
-                self.featurizer.network.set_activation_status(False)
-                x2_o = self.network(x2)
-                self.featurizer.network.set_activation_status(True, i)
-                x2_aug = self.network(x2)
-                loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_aug, y2)
-                x2_o, x2_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_aug / self.hparams['T'], dim=1)
-                loss_cls += F.kl_div(x2_o.log(), x2_aug, reduction='batchmean')
-        loss_cls /= len(pairs)
-        loss_tea /= len(pairs)
-        loss = loss_cls + loss_tea
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        self.featurizer.network.update_buffers(momentun=self.hparams["momentun_style"])
-        if self.hparams['MT']:
-            self.featurizer_teacher.network.update_buffers(momentun=self.hparams["momentun_style"])
-            if self.hparams['warm_MT']:
-                warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
-            else:
-                update_teacher(self.network, self.network_teacher)
-            return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_t": loss_tea.item()}
-        else:
-            return {"loss": loss.item(), "loss_s": loss_cls.item()}
-
-    def predict(self, x):
-        if self.hparams['MT']:
-            return self.network(x), self.network_teacher(x)
-        return self.network(x)
-
-    def get_params(self):
-        params = [
-                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
-            ]
-        return params
-
 class MSMT2(Algorithm):
     """MixStyle w/ domain label"""
 
@@ -544,36 +433,42 @@ class MSMT2(Algorithm):
     def update(self, x, y, **kwargs):
         loss = 0.0
         loss_cls = 0.0
-        loss_tea = 0.0
-        x2 = torch.cat(x)
-        y2 = torch.cat(y)
+        loss_cot = 0.0
+        loss_cs = 0.0
+        loss_ct = 0.0
+        x = torch.cat(x)
+        y = torch.cat(y)
 
         if self.hparams['MT']:            
             self.featurizer.network.set_activation_status(False)
             self.featurizer_teacher.network.set_activation_status(False)
-            x2_t = self.network_teacher(x2)
-            x2_o = self.network(x2)
+            x_t = self.network_teacher(x)
+            x_o = self.network(x)
 
             self.featurizer.network.set_activation_status(True)
             self.featurizer_teacher.network.set_activation_status(True)
-            x2_t_aug = self.network_teacher(x2)
-            x2_o_aug = self.network(x2)
-            loss_cls = F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
+            x_t_aug = self.network_teacher(x)
+            x_o_aug = self.network(x)
+            loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_o_aug, y)
 
-            x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
-            x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
-            loss_tea = F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
+            x_o, x_o_aug = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_o_aug / self.hparams['T'], dim=1)
+            x_t, x_t_aug = F.softmax(x_t / self.hparams['T'], dim=1), F.softmax(x_t_aug / self.hparams['T'], dim=1)
+            # loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean') + F.kl_div(x_o.log(), x_t, reduction='batchmean')
+            if self.hparams['CL']:
+                loss_cs = F.kl_div(x_o.log(), x_o_aug, reduction='batchmean')
+                loss_ct = F.kl_div(x_t.log(), x_t_aug, reduction='batchmean')
+            loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
         else:
-            x2_o = self.network(x2)
-            loss_cls = F.cross_entropy(x2_o, y2)
+            x_o = self.network(x)
+            loss_cls = F.cross_entropy(x_o, y)
             # self.featurizer.network.set_activation_status(False)
-            # x2_o = self.network(x2)
+            # x_o = self.network(x)
             # self.featurizer.network.set_activation_status(True)
-            # x2_aug = self.network(x2)
-            # loss_cls = F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_aug, y2)
-            # x2_o, x2_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_aug / self.hparams['T'], dim=1)
-            # loss_cls += F.kl_div(x2_o.log(), x2_aug, reduction='batchmean')
-        loss = loss_cls + loss_tea
+            # x_aug = self.network(x)
+            # loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_aug, y)
+            # x_o, x_aug = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_aug / self.hparams['T'], dim=1)
+            # loss_cls += F.kl_div(x_o.log(), x_aug, reduction='batchmean')
+        loss = loss_cls + loss_cot + loss_cs
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -581,8 +476,10 @@ class MSMT2(Algorithm):
             if self.hparams['warm_MT']:
                 warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
             else:
-                update_teacher(self.network, self.network_teacher)
-            return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_t": loss_tea.item()}
+                update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'])
+            if self.hparams['CL']:
+                return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item(), "loss_cs": loss_cs.item(), "loss_ct": loss_ct.item()}
+            return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item()}
         else:
             return {"loss": loss.item(), "loss_s": loss_cls.item()}
 

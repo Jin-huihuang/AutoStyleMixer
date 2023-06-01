@@ -148,7 +148,7 @@ class MixStyle2(nn.Module):
       Zhou et al. Domain Generalization with MixStyle. ICLR 2021.
     """
 
-    def __init__(self, initial_value=0.5, T=0.3, eps=1e-6, lmda=None, num_features=None, domain_n=None, momentun=0.9, **kwargs):
+    def __init__(self, initial_value=0.5, T=0.3, eps=1e-6, lmda=None, num_features=None, domain_n=None, momentum=0.9, **kwargs):
         """
         Args:
           p (float): probability of using MixStyle.
@@ -159,7 +159,7 @@ class MixStyle2(nn.Module):
         self.eps = eps
         self.T = T
         self.lmda = lmda
-        self.momentun = momentun
+        self.momentum = momentum
         self._activated = True
         self.MT = kwargs['MT']
 
@@ -196,7 +196,7 @@ class MixStyle2(nn.Module):
         # EMA statistics
         if not activated or not self.MT:
             if self._buffers['statistics'] is not None:
-                self._buffers['statistics'] = self._buffers['statistics']*self.momentun + new_statistics*(1-self.momentun)
+                self._buffers['statistics'] = self._buffers['statistics']*self.momentum + new_statistics*(1-self.momentum)
             else:
                 self._buffers['statistics'] = new_statistics
             if self.MT:    

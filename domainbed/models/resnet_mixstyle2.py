@@ -239,14 +239,14 @@ class ResNet(nn.Module):
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
     
-    def update_buffers(self, momentun=0.9):
+    def update_buffers(self, momentum=0.9):
         if self.style_mus[0]:
             for l1, l2 in zip(self.style_mus, self.mu): # domain
                 for i, (x, y) in enumerate(zip(l1, l2)): # layer
-                    l1[i] = momentun * x + (1. - momentun) * y
+                    l1[i] = momentum * x + (1. - momentum) * y
             for l1, l2 in zip(self.style_vars, self.var): # domain
                 for i, (x, y) in enumerate(zip(l1, l2)): # layer
-                    l1[i] = momentun * x + (1. - momentun) * y
+                    l1[i] = momentum * x + (1. - momentum) * y
         else:
             self.style_mus = self.mu
             self.style_vars = self.var
@@ -287,7 +287,7 @@ class ResNet2(nn.Module):
                 T=self.hparams['Mix_T'],
                 num_features=num_features[layer_name],
                 domain_n=self.hparams['domain_num'], 
-                momentun=self.hparams["momentun_style"],
+                momentum=self.hparams["momentum_style"],
                 MT=self.hparams['MT']
                 )
 
