@@ -34,6 +34,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams['momentum_style'] = (0.9, 0.9)
     hparams['momentum_MT'] = (0.9995, 0.9995)
     hparams['bn'] = (False, False)
+    hparams['EMA'] = (True, True)
     hparams['warm_up'] = (False, False)
     hparams['warm_up_step'] = (0, 0)
     hparams['cot_w'] = (1, 1)
