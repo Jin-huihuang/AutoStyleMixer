@@ -35,4 +35,4 @@ with open(jsonl_file, 'r') as f:
     sum += acc
 
 # 输出结果
-print("Average Accuracy: {:.4f}".format(sum/(data['args']['real_test_envs'][0] + 1)))
+print("Average Accuracy: {:.3f}".format(100*sum/(data['args']['real_test_envs'][0] + 1)))

@@ -468,17 +468,17 @@ class MSMT2(Algorithm):
             # loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_aug, y)
             # x_o, x_aug = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_aug / self.hparams['T'], dim=1)
             # loss_cls += F.kl_div(x_o.log(), x_aug, reduction='batchmean')
-        loss = loss_cls + loss_cot + loss_cs
+        loss = loss_cls + self.hparams['cot_w']*(loss_cot + loss_cs)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         if self.hparams['MT']:
             if self.hparams['warm_MT']:
-                warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
+                warm_update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'], global_step=kwargs['step'], warm_up=self.hparams['warm_up_step'])
             else:
                 update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'])
             if self.hparams['CL']:
-                return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item(), "loss_cs": loss_cs.item(), "loss_ct": loss_ct.item()}
+                return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item(), "loss_cs": loss_cs.item(), "loss_ct": loss_ct.item(), "sum_cot": (loss_ct.item()+loss_cs.item())}
             return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item()}
         else:
             return {"loss": loss.item(), "loss_s": loss_cls.item()}

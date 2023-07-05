@@ -28,20 +28,23 @@ def update_teacher(model, teacher, momentum=0.9995):
     teacher_dict = teacher.state_dict()
     for (k_q, v_q), (k_k, v_k) in zip(model_dict.items(), teacher_dict.items()):
         assert k_k == k_q, "state_dict names are different!"
-        if k_q.endswith('statistics'): continue
+        # if k_q.endswith('statistics'): continue
         if 'num_batches_tracked' in k_k:
             v_k.copy_(v_q)
         else:
             v_k.copy_(v_k * momentum + (1. - momentum) * v_q)
 
 
-def warm_update_teacher(model, teacher, momentum=0.9995, global_step=2000):
-    momentum = min(1 - 1 / (global_step + 1), momentum)
+def warm_update_teacher(model, teacher, momentum=0.9995, global_step=2000, warm_up=0):
+    if global_step > warm_up - 1:
+        momentum = min(1 - 1 / (global_step + 2 - warm_up), momentum)
+    else:
+        momentum = 1 - 0.5 * (global_step + 1) / warm_up
     model_dict = model.state_dict()
     teacher_dict = teacher.state_dict()
     for (k_q, v_q), (k_k, v_k) in zip(model_dict.items(), teacher_dict.items()):
         assert k_k == k_q, "state_dict names are different!"
-        if k_q.endswith('statistics'): continue
+        # if k_q.endswith('statistics'): continue
         if 'num_batches_tracked' in k_k:
             v_k.copy_(v_q)
         else:

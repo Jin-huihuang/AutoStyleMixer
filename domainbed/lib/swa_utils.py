@@ -67,21 +67,25 @@ class AveragedModel(Module):
         #             self.avg_fn(p_swa.detach(), p_model_, self.n_averaged.to(device))
         #         )
         # self.n_averaged += 1
-        self_param = (
-            itertools.chain(self.module.parameters(), self.module.buffers())
-            if self.use_buffers else self.parameters()
-        )
-        model_param = (
-            itertools.chain(model.parameters(), model.buffers())
-            if self.use_buffers else model.parameters()
-        )
-        for p_swa, p_model in zip(self_param, model_param):
-            device = p_swa.device
+        # self_param = (
+        #     itertools.chain(self.module.parameters(), self.module.buffers())
+        #     if self.use_buffers else self.parameters()
+        # )
+        # model_param = (
+        #     itertools.chain(model.parameters(), model.buffers())
+        #     if self.use_buffers else model.parameters()
+        # )
+
+        self_param = self.module.state_dict()
+        model_param = model.state_dict()
+        for (name, p_model) in model_param.items():
+            device = p_model.device
             p_model_ = p_model.detach().to(device)
             if self.n_averaged == 0:
-                p_swa.detach().copy_(p_model_)
+                self_param.setdefault(name)
+                self_param[name] = p_model_
             else:
-                p_swa.detach().copy_(self.avg_fn(p_swa.detach(), p_model_,
+                self_param[name].detach().copy_(self.avg_fn(self_param[name].detach(), p_model_,
                                                  self.n_averaged.to(device)))
         self.n_averaged += 1
 

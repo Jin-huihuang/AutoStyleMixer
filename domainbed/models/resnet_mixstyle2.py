@@ -288,7 +288,7 @@ class ResNet2(nn.Module):
                 num_features=num_features[layer_name],
                 domain_n=self.hparams['domain_num'], 
                 momentum=self.hparams["momentum_style"],
-                MT=self.hparams['MT']
+                hparams=self.hparams
                 )
 
         self._activated = True
@@ -352,23 +352,53 @@ class ResNet2(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
         if "conv1" in self.mixstyle_layers:
-            x = self.stymix["conv1"](x, self._activated)
+            if self.hparams['resdual']:
+                if self.hparams['div2']:
+                    x = (x + self.stymix["conv1"](x, self._activated)) / 2
+                else:
+                    x = x + self.stymix["conv1"](x, self._activated)
+            else:
+                x = self.stymix["conv1"](x, self._activated)
 
         x = self.layer1(x)
         if "conv2_x" in self.mixstyle_layers:
-            x = self.stymix["conv2_x"](x, self._activated)
+            if self.hparams['resdual']:
+                if self.hparams['div2']:
+                    x = (x + self.stymix["conv2_x"](x, self._activated)) / 2
+                else:
+                    x = x + self.stymix["conv2_x"](x, self._activated)
+            else:
+                x = self.stymix["conv2_x"](x, self._activated)
 
         x = self.layer2(x)
         if "conv3_x" in self.mixstyle_layers:
-            x = self.stymix["conv3_x"](x, self._activated)
+            if self.hparams['resdual']:
+                if self.hparams['div2']:
+                    x = (x + self.stymix["conv3_x"](x, self._activated)) / 2
+                else:
+                    x = x + self.stymix["conv3_x"](x, self._activated)
+            else:
+                x = self.stymix["conv3_x"](x, self._activated)
 
         x = self.layer3(x)
         if "conv4_x" in self.mixstyle_layers:
-            x = self.stymix["conv4_x"](x, self._activated)
+            if self.hparams['resdual']:
+                if self.hparams['div2']:
+                    x = (x + self.stymix["conv4_x"](x, self._activated)) / 2
+                else:
+                    x = x + self.stymix["conv4_x"](x, self._activated)
+            else:
+                x = self.stymix["conv4_x"](x, self._activated)
 
         x = self.layer4(x)
         if "conv5_x" in self.mixstyle_layers:
-            x = self.stymix["conv5_x"](x, self._activated)
+            if self.hparams['resdual']:
+                if self.hparams['div2']:
+                    x = (x + self.stymix["conv5_x"](x, self._activated)) / 2
+                else:
+                    x = x + self.stymix["conv5_x"](x, self._activated)
+            else:
+                x = self.stymix["conv5_x"](x, self._activated)
 
         return x
 

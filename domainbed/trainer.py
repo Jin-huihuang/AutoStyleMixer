@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.utils.data
+import torch.nn.functional as F
 
 from domainbed.datasets import get_dataset, split_dataset
 from domainbed import algorithms
@@ -160,6 +161,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
     last_results_keys = None
     records = []
     epochs_path = args.out_dir / "results.jsonl"
+    best_acc = 0
 
     for step in range(n_steps):
         step_start_time = time.time()
@@ -194,7 +196,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
             eval_start_time = time.time()
             accuracies, summaries = evaluator.evaluate(algorithm, args.algorithm)
             results["eval_time"] = time.time() - eval_start_time
-
+            
             # results = (epochs, loss, step, step_time)
             results_keys = list(summaries.keys()) + sorted(accuracies.keys()) + list(results.keys())
             # merge results
@@ -218,13 +220,23 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
 
             writer.add_scalars_with_prefix(summaries, step, f"{testenv_name}/summary/")
             writer.add_scalars_with_prefix(accuracies, step, f"{testenv_name}/all/")
+            if hparams['algorithm'] == 'MSMT2' and not hparams['fb']:
+                lmda_s = {}
+                lmda_t = {}
+                for (name_s, layer_s), (name_t, layer_t) in zip(algorithm.featurizer.network.stymix.items(), algorithm.featurizer_teacher.network.stymix.items()):
+                    s = F.softmax(layer_s.lmda, dim=-1)
+                    t = F.softmax(layer_t.lmda, dim=-1)
+                    lmda_s[name_s+'_s'] = s[:,0].item()
+                    lmda_t[name_t+'_t'] = t[:,0].item()
+                writer.add_scalars_with_prefix(lmda_s, step, f"{testenv_name}/all/")
+                writer.add_scalars_with_prefix(lmda_t, step, f"{testenv_name}/all/")
 
-            if args.save and step >= args.save:
+            if args.save and step >= args.save and results['train_outMT'] > best_acc:
                 ckpt_dir = args.out_dir / "checkpoints"
                 ckpt_dir.mkdir(exist_ok=True)
 
                 test_env_str = ",".join(map(str, test_envs))
-                filename = "TE{}_{}.pth".format(test_env_str, step)
+                filename = "TE{}_best.pth".format(test_env_str)
                 if len(test_envs) > 1 and target_env is not None:
                     train_env_str = ",".join(map(str, train_envs))
                     filename = f"TE{target_env}_TR{train_env_str}_{step}.pth"
@@ -241,6 +253,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                     torch.save(save_dict, path)
                 else:
                     logger.debug("DEBUG Mode -> no save (org path: %s)" % path)
+                best_acc = results['train_outMT']
 
             # swad
             if swad:
@@ -250,7 +263,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                     logger.info(row + step_str)
 
                 swad.update_and_evaluate(
-                    swad_algorithm, results["train_out"], results["tr_outloss"], prt_results_fn
+                    swad_algorithm, results["train_outMT"], results["tr_outloss"], prt_results_fn
                 )
 
                 if hasattr(swad, "dead_valley") and swad.dead_valley:

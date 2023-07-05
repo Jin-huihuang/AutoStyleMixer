@@ -75,7 +75,6 @@ def main():
     keys = [open(key, encoding="utf8") for key in keys]
     hparams = Config(*keys, default=hparams)
     hparams.argv_update(left_argv)
-    print(hparams)
     # setup debug
     if args.debug:
         # hparams['batch_size'] = 1
@@ -121,7 +120,7 @@ def main():
 
     # Different to DomainBed, we support CUDA only.
     assert torch.cuda.is_available(), "CUDA is not available"
-
+    
     logger.nofmt("Args:")
     for k, v in sorted(vars(args).items()):
         logger.nofmt("\t{}: {}".format(k, v))
@@ -153,6 +152,8 @@ def main():
     logger.nofmt("")
 
     n_steps = args.steps or dataset.N_STEPS
+    if hparams['warm_up']:
+        hparams['warm_up_step'] = int(n_steps * 0.1)
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
     logger.info(f"n_steps = {n_steps}")
     logger.info(f"checkpoint_freq = {checkpoint_freq}")
