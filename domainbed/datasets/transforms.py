@@ -1,5 +1,4 @@
 from torchvision import transforms as T
-import clip
 
 basic = T.Compose(
     [
