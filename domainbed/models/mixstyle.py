@@ -84,15 +84,21 @@ class MixStyle2(nn.Module):
         self.domain_n = domain_n - 1 # leave-one-out
         self.register_buffer("statistics", None) # dim 2 denote (mean, var)
         if self.hparams['GB'] == 2:
-            self.variation = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Linear(num_features, num_features // 4, bias=False),
+            if self.hparams['fb']:
+                self.variation = nn.Sequential(
+            nn.Linear(num_features, num_features, bias=False),
             nn.ReLU(inplace=True),
-            nn.Linear(num_features // 4, 2, bias=False),
+            nn.Linear(num_features, num_features, bias=False),
             nn.Sigmoid()
-        )
-            lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(1, -1, 1, 1)
-        if self.hparams['random']:
+            )
+            else:
+                self.variation = nn.Sequential(
+                nn.Linear(num_features, num_features, bias=False),
+                nn.ReLU(inplace=True),
+                nn.Linear(num_features, 1, bias=False),
+                nn.Sigmoid()
+                )
+        elif self.hparams['random']:
             self.beta = torch.distributions.Beta(0.1, 0.1)
         else:
             if self.hparams['fb']:
@@ -143,23 +149,24 @@ class MixStyle2(nn.Module):
             lmda = lmda.to(x.device)
         # 1.Gumbel-Softmax
         elif self.hparams['GB'] == 1: 
-            lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(1, -1, 1, 1)
+            lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
         elif self.hparams['GB'] == 2:
             if self.hparams['detach']:
-                x_variation = self.variation(x).detach()
+                x_avg = x.detach().mean(dim=(0,2,3))
             else:
-                x_variation = self.variation(x)
-            lmda = F.gumbel_softmax(x_variation, 1/self.T, hard=True).view(1, -1, 1, 1)
+                x_avg = x.mean(dim=(0,2,3))
+            x_variation = self.variation(x_avg)
+            lmda = F.gumbel_softmax(torch.cat((x_variation,1-x_variation)), 1/self.T, hard=True).view(2, -1, 1, 1)
         else:
-            lmda = self.softmax(self.lmda*self.T)[:,0].view(1, -1, 1, 1)
+            lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
         
-        if self.hparams['c_dropout']:
-            lmda = lmda.expand(mu.size())
-            mask = lmda.new_empty(lmda.shape).bernoulli_(1 - self.hparams['c_drop_prob'])
-            lmda = 1 - lmda * mask
+        # if self.hparams['c_dropout']:
+        #     lmda = lmda.expand(mu.size())
+        #     mask = lmda.new_empty(lmda.shape).bernoulli_(1 - self.hparams['c_drop_prob'])
+        #     lmda = 1 - lmda * mask
         if self.hparams['GB']:
-            mu_mix = mu * lmda[:,0] + mu2 * lmda[:,1]
-            sig_mix = sig * lmda[:,0] + sig2 * lmda[:,1]
+            mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
+            sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]
         else:
             mu_mix = mu * lmda + mu2 * (1 - lmda)
             sig_mix = sig * lmda + sig2 * (1 - lmda)
