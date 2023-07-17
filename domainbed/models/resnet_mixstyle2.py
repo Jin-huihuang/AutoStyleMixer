@@ -347,58 +347,97 @@ class ResNet2(nn.Module):
         self.domain = domain
 
     def featuremaps(self, x):
+        if self.training:
+            multi_flag = False
+        else:
+            multi_flag = True
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
+        x = self.maxpool(x) # (B, C, H, W)
         if "conv1" in self.mixstyle_layers:
-            if self.hparams['resdual']:
-                if self.hparams['div2']:
-                    x = (x + self.stymix["conv1"](x, self._activated)) / 2
-                else:
-                    x = x + self.stymix["conv1"](x, self._activated)
+            if multi_flag:
+                multi_flag = False
+                multi = True
             else:
-                x = self.stymix["conv1"](x, self._activated)
+                multi = False
+            x_tmp = self.stymix["conv1"](x, self._activated, multi)
+            if self.hparams['resdual']:
+                x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+                if self.hparams['div2']:
+                    x = (x + x_tmp) / 2
+                else:
+                    x = x + x_tmp
+            else:
+                x = x_tmp
 
         x = self.layer1(x)
         if "conv2_x" in self.mixstyle_layers:
-            if self.hparams['resdual']:
-                if self.hparams['div2']:
-                    x = (x + self.stymix["conv2_x"](x, self._activated)) / 2
-                else:
-                    x = x + self.stymix["conv2_x"](x, self._activated)
+            if multi_flag:
+                multi_flag = False
+                multi = True
             else:
-                x = self.stymix["conv2_x"](x, self._activated)
+                multi = False
+            x_tmp = self.stymix["conv2_x"](x, self._activated, multi)
+            if self.hparams['resdual']:
+                x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+                if self.hparams['div2']:
+                    x = (x + x_tmp) / 2
+                else:
+                    x = x + x_tmp
+            else:
+                x = x_tmp
 
         x = self.layer2(x)
         if "conv3_x" in self.mixstyle_layers:
-            if self.hparams['resdual']:
-                if self.hparams['div2']:
-                    x = (x + self.stymix["conv3_x"](x, self._activated)) / 2
-                else:
-                    x = x + self.stymix["conv3_x"](x, self._activated)
+            if multi_flag:
+                multi_flag = False
+                multi = True
             else:
-                x = self.stymix["conv3_x"](x, self._activated)
+                multi = False
+            x_tmp = self.stymix["conv3_x"](x, self._activated, multi)
+            if self.hparams['resdual']:
+                x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+                if self.hparams['div2']:
+                    x = (x + x_tmp) / 2
+                else:
+                    x = x + x_tmp
+            else:
+                x = x_tmp
 
         x = self.layer3(x)
         if "conv4_x" in self.mixstyle_layers:
-            if self.hparams['resdual']:
-                if self.hparams['div2']:
-                    x = (x + self.stymix["conv4_x"](x, self._activated)) / 2
-                else:
-                    x = x + self.stymix["conv4_x"](x, self._activated)
+            if multi_flag:
+                multi_flag = False
+                multi = True
             else:
-                x = self.stymix["conv4_x"](x, self._activated)
+                multi = False
+            x_tmp = self.stymix["conv4_x"](x, self._activated, multi)
+            if self.hparams['resdual']:
+                x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+                if self.hparams['div2']:
+                    x = (x + x_tmp) / 2
+                else:
+                    x = x + x_tmp
+            else:
+                x = x_tmp
 
         x = self.layer4(x)
         if "conv5_x" in self.mixstyle_layers:
-            if self.hparams['resdual']:
-                if self.hparams['div2']:
-                    x = (x + self.stymix["conv5_x"](x, self._activated)) / 2
-                else:
-                    x = x + self.stymix["conv5_x"](x, self._activated)
+            if multi_flag:
+                multi_flag = False
+                multi = True
             else:
-                x = self.stymix["conv5_x"](x, self._activated)
+                multi = False
+            x_tmp = self.stymix["conv5_x"](x, self._activated, multi)
+            if self.hparams['resdual']:
+                x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+                if self.hparams['div2']:
+                    x = (x + x_tmp) / 2
+                else:
+                    x = x + x_tmp
+            else:
+                x = x_tmp
 
         return x
 

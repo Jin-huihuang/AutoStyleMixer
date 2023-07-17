@@ -106,18 +106,48 @@ class MixStyle2(nn.Module):
             else:
                 self.lmda = torch.nn.Parameter(torch.full((1, 2), initial_value))
             self.softmax = nn.Softmax(dim=-1)
-            
 
     def __repr__(self):
         return f"MixStyle(p={self.p}, alpha={self.alpha}, eps={self.eps})"
 
-    def forward(self, x, activated=False):
+    def forward(self, x, activated=False, multi=False):
         """
         For the input x, the first half comes from one domain,
         while the second half comes from the other domain.
         """
         if not self.training:
-            return x
+            if not self.hparams['Multi_test']:
+                return x
+            else:
+                mu = x.mean(dim=[2, 3], keepdim=True)
+                var = x.var(dim=[2, 3], keepdim=True)
+                sig = (var + self.eps).sqrt()
+                if multi:
+                    domain_n = self._buffers['statistics'].size(1)
+                    mu, sig = mu.mean(dim=0, keepdim=True), sig.mean(dim=0, keepdim=True)
+                    x_normed = (x - mu) / sig
+                    multi_x = x
+                    for n in range(domain_n):
+                        mu = self._buffers['statistics'][0, n]
+                        sig = self._buffers['statistics'][1, n]
+                        x_mix = x_normed * sig + mu
+                        multi_x = torch.concat([multi_x, x_mix], dim=0)
+                else:
+                    domain_n = self._buffers['statistics'].size(1)
+                    test_size = x.size(0) // (domain_n + 1)
+                    mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
+                    mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
+                    x_normed = (x - mu) / sig
+                    x_normed[0:test_size] = x_normed[0:test_size] * sig[0:test_size] + mu[0:test_size]
+                    x = x_normed
+                    for n in range(domain_n):
+                        mu = self._buffers['statistics'][0, n]
+                        sig = self._buffers['statistics'][1, n]
+                        index_s = (n+1) * test_size
+                        index_e = (n+2) * test_size
+                        x[index_s:index_e] = x[index_s:index_e] * sig + mu
+                    multi_x = x
+                return multi_x
         
         B, C, H, W = x.shape
 
@@ -126,7 +156,7 @@ class MixStyle2(nn.Module):
         sig = (var + self.eps).sqrt()
         mu, sig = mu.detach(), sig.detach()
         
-        new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1)
+        new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1) --> (sta,D,1,C,1,1)
         if self.hparams['bn']:
             mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
         
@@ -139,7 +169,7 @@ class MixStyle2(nn.Module):
             if self.MT:    
                 return x
         # 2.reinforce
-            
+
         # mix_style, shuffle
         perm = torch.randperm(self.domain_n)
         mu2, sig2 = self._buffers['statistics'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['statistics'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)

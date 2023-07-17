@@ -44,6 +44,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams['resdual'] = (False, False)
     hparams['div2'] = (True, True)
     hparams['CL'] = (False, False)
+    hparams['Multi_test'] = (False, False)
     hparams['fb'] = (True, True)
     hparams['random'] = (False, False)
     hparams['T'] = (10, 10)

@@ -283,6 +283,8 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
     oracle_best_MT = records.argmax("test_outMT")["test_inMT"]
     iid_best = records.argmax("train_out")["test_in"]
     iid_best_MT = records.argmax("train_outMT")["test_inMT"]
+    iid_best_Mul = records.argmax("train_out")["test_inMul"]
+    iid_best_Mul_t = records.argmax("train_outMT")["test_inMMul"]
     last = records[-1]["test_in"]
 
     if hparams.indomain_test:
@@ -299,6 +301,8 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         "oracle_best_MT": oracle_best_MT,
         "iid": iid_best,
         "iid_MT":iid_best_MT,
+        "iid_mul": iid_best_Mul,
+        "iid_mul_MT":iid_best_Mul_t,
         "last": last,
         "last (inD)": last_indomain,
         "iid (inD)": iid_best_indomain,
