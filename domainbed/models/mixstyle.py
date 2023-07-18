@@ -138,7 +138,7 @@ class MixStyle2(nn.Module):
                     mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
                     mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
                     x_normed = (x - mu) / sig
-                    x_normed[0:test_size] = x_normed[0:test_size] * sig[0:test_size] + mu[0:test_size]
+                    x_normed[0:test_size] = x[0:test_size]
                     x = x_normed
                     for n in range(domain_n):
                         mu = self._buffers['statistics'][0, n]
