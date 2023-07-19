@@ -119,25 +119,38 @@ class MixStyle2(nn.Module):
             if not self.hparams['Multi_test']:
                 return x
             else:
-                mu = x.mean(dim=[2, 3], keepdim=True)
+                if self.hparams['GB'] == 1: 
+                    lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
+                elif self.hparams['GB'] == 2:
+                    if self.hparams['detach']:
+                        x_avg = x.detach().mean(dim=(0,2,3))
+                    else:
+                        x_avg = x.mean(dim=(0,2,3))
+                    x_variation = self.variation(x_avg)
+                    lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
+
+                mu0 = x.mean(dim=[2, 3], keepdim=True)
                 var = x.var(dim=[2, 3], keepdim=True)
-                sig = (var + self.eps).sqrt()
+                sig0 = (var + self.eps).sqrt()
                 if multi:
                     domain_n = self._buffers['statistics'].size(1)
-                    mu, sig = mu.mean(dim=0, keepdim=True), sig.mean(dim=0, keepdim=True)
-                    x_normed = (x - mu) / sig
+                    # mu0, sig0 = mu.mean(dim=0, keepdim=True), sig.mean(dim=0, keepdim=True)
+                    x_normed = (x - mu0) / sig0
                     multi_x = x
                     for n in range(domain_n):
                         mu = self._buffers['statistics'][0, n]
                         sig = self._buffers['statistics'][1, n]
+                        if self.hparams['GB']:
+                            mu = mu0 * lmda[0:1] + mu * lmda[1:2]
+                            sig = sig0 * lmda[0:1] + sig * lmda[1:2]
                         x_mix = x_normed * sig + mu
                         multi_x = torch.concat([multi_x, x_mix], dim=0)
                 else:
                     domain_n = self._buffers['statistics'].size(1)
                     test_size = x.size(0) // (domain_n + 1)
-                    mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
-                    mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
-                    x_normed = (x - mu) / sig
+                    # mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
+                    # mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
+                    x_normed = (x - mu0) / sig0
                     x_normed[0:test_size] = x[0:test_size]
                     x = x_normed
                     for n in range(domain_n):
@@ -145,6 +158,9 @@ class MixStyle2(nn.Module):
                         sig = self._buffers['statistics'][1, n]
                         index_s = (n+1) * test_size
                         index_e = (n+2) * test_size
+                        if self.hparams['GB']:
+                            mu = mu0[index_s:index_e] * lmda[0:1] + mu * lmda[1:2]
+                            sig = sig0[index_s:index_e] * lmda[0:1] + sig * lmda[1:2]
                         x[index_s:index_e] = x[index_s:index_e] * sig + mu
                     multi_x = x
                 return multi_x
@@ -186,7 +202,7 @@ class MixStyle2(nn.Module):
             else:
                 x_avg = x.mean(dim=(0,2,3))
             x_variation = self.variation(x_avg)
-            lmda = F.gumbel_softmax(torch.cat((x_variation,1-x_variation)), 1/self.T, hard=True).view(2, -1, 1, 1)
+            lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
         else:
             lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
         
