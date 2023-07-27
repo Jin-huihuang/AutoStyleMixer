@@ -485,7 +485,9 @@ class MSMT2(Algorithm):
 
     def predict(self, x):
         if self.hparams['MT']:
-            return self.network(x), self.network_teacher(x)
+            xs = self.network(x)
+            xt = self.network_teacher(x)
+            return xs, xt
         return self.network(x)
 
     def get_params(self):

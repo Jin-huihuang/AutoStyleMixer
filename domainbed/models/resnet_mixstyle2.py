@@ -336,11 +336,6 @@ class ResNet2(nn.Module):
                 nn.init.normal_(m.weight, 0, 0.01)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-
-    def compute_style(self, x):
-        mu = x.mean(dim=[2, 3])
-        sig = x.std(dim=[2, 3])
-        return torch.cat([mu, sig], 1)
     
     def set_activation_status(self, status=True, domain=None):
         self._activated = status
@@ -445,8 +440,6 @@ class ResNet2(nn.Module):
         f = self.featuremaps(x)
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
-
-
 
 
 def init_pretrained_weights(model, model_url):

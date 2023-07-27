@@ -24,6 +24,8 @@ def _hparams(algorithm, dataset, random_state):
     hparams["optimizer"] = ("adam", "adam")
     hparams["hidden_size"] = (512, 512)
     hparams['unlr'] = (True, True)
+    hparams["cc"] = (False, False)
+    hparams["AdaptiveAug"] = (False, False)
 
     hparams["use_lambda_scheduler"] = (True, True)
     hparams['model_name'] = ('small', 'small')
