@@ -457,7 +457,12 @@ class MSMT2(Algorithm):
             if self.hparams['CL']:
                 loss_cs = F.kl_div(x_o.log(), x_o_aug, reduction='batchmean')
                 loss_ct = F.kl_div(x_t.log(), x_t_aug, reduction='batchmean')
-            loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
+            if self.hparams['selfKL']:
+                loss_cot = F.kl_div(x_o.log(), x_t, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t_aug, reduction='batchmean')
+            elif self.hparams["allKL"]:
+                loss_cot = F.kl_div(x_o.log(), x_t, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
+            else:
+                loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
         else:
             x_o = self.network(x)
             loss_cls = F.cross_entropy(x_o, y)

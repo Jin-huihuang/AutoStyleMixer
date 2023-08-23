@@ -91,13 +91,13 @@ class LossValley(SWADBase):
         self.smooth_Q.append(frozen)
 
         if not self.is_converged:
-            if len(self.converge_Q) < self.n_converge:
+            if len(self.converge_Q) < self.n_converge: ## if converge_deque is not full
                 return
 
             min_idx = np.argmin([model.end_loss for model in self.converge_Q])
             untilmin_segment_swa = self.converge_Q[min_idx]  # until-min segment swa.
             if min_idx == 0:
-                self.converge_step = self.converge_Q[0].end_step
+                self.converge_step = self.converge_Q[0].end_step 
                 self.final_model = swa_utils.AveragedModel(untilmin_segment_swa, use_buffers=self.use_buffers)
 
                 th_base = np.mean([model.end_loss for model in self.converge_Q])
@@ -109,7 +109,7 @@ class LossValley(SWADBase):
                         self.final_model.update_parameters(
                             model, start_step=model.start_step, end_step=model.end_step
                         )
-                elif self.n_tolerance > self.n_converge:
+                elif self.n_tolerance > self.n_converge: # defalut
                     converge_idx = self.n_tolerance - self.n_converge
                     Q = list(self.smooth_Q)[: converge_idx + 1]
                     start_idx = 0

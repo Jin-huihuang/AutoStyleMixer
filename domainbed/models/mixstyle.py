@@ -82,7 +82,7 @@ class MixStyle2(nn.Module):
         self.MT = self.hparams['MT']
 
         self.domain_n = domain_n - 1 # leave-one-out
-        self.register_buffer("statistics", None) # dim 2 denote (mean, var)
+        self.register_buffer("statistics", torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
         if self.hparams['GB'] == 2:
             if self.hparams['fb']:
                 self.variation = nn.Sequential(
@@ -197,16 +197,19 @@ class MixStyle2(nn.Module):
         
         # EMA statistics
         if not activated or not self.MT:
-            if self._buffers['statistics'] is not None:
-                self._buffers['statistics'] = self._buffers['statistics']*self.momentum + new_statistics*(1-self.momentum)
-            else:
+            if self._buffers['statistics'].sum() == 0:  # Check if it's still uninitialized
                 self._buffers['statistics'] = new_statistics
+            else:
+                self._buffers['statistics'] = self._buffers['statistics'] * self.momentum + new_statistics * (1 - self.momentum)
             if self.MT:    
                 return x
-        # 2.reinforce
 
         # mix_style, shuffle
-        perm = torch.randperm(self.domain_n)
+        ori_perm = torch.arange(self.domain_n)
+        while True:
+            perm = torch.randperm(ori_perm.size(0))
+            if torch.all(perm != ori_perm):
+                break
         mu2, sig2 = self._buffers['statistics'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['statistics'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
         x_normed = (x - mu) / sig
         if self.hparams['random']:

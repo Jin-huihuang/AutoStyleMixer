@@ -26,9 +26,8 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
     for i, batch in enumerate(loader):
         x = batch["x"].to(device)
         y = batch["y"].to(device)
-
+        size = y.size(0)
         if hparams['Multi_test']:
-            size = y.size(0)
             multi_y = y
             for i in range(num_domains):
                 multi_y = torch.concat([multi_y, y], dim=0)
