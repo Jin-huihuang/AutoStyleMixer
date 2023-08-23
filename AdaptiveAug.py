@@ -26,10 +26,9 @@ def main():
     parser = argparse.ArgumentParser(description="Domain generalization")
     parser.add_argument("--network", type=str, default="RN50")
     parser.add_argument("--output_dir",
-                        default='/export/home/zhh/project/MHDG/train_output/PACS/230807_09-49-29_PACS_MSMT2_100_3e-05R1_M/checkpoints',
+                        default='/export/home/zhh/project/MHDG/train_output/PACS/230821_10-10-02_PACS_MSMT2_100_3e-05R1_M/checkpoints',
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
     parser.add_argument("--data_dir", default='/data', type=str)
-    parser.add_argument("--mode", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)

@@ -229,7 +229,7 @@ class MixStyle2(nn.Module):
             lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
         
         if self.hparams['AdaptiveAug']:
-            lmda2 = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
+            lmda2 = self.softmax(self.lmda2*self.T)[:,0].view(-1, C, 1, 1)
         
         # if self.hparams['c_dropout']:
         #     lmda = lmda.expand(mu.size())
