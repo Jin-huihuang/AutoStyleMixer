@@ -2,19 +2,14 @@ import argparse
 from distutils.util import strtobool
 from glob import glob
 from re import split
+import re
 import sys
+from matplotlib import pyplot as plt
 import torch
 from domainbed.algorithms import MSMT2
 import numpy as np
-from domainbed.lib import misc
-import numpy
 from domainbed.datasets import datasets, split_dataset
-import matplotlib.pyplot as pyplot
-from tqdm import tqdm
-from domainbed.datasets import transforms as DBT
-from torch.utils.data.dataloader import DataLoader
-from openTSNE import TSNE
-from domainbed.lib.fast_data_loader import FastDataLoader
+import torch.nn.functional as F
 
 if torch.cuda.is_available():
     device = "cuda"
@@ -42,8 +37,27 @@ def main():
         model = MSMT2(dataset.input_shape, dataset.num_classes, len(dataset) - len(test_envs), checkpoint['model_hparams']).to(device)
         model.load_state_dict(checkpoint['model_dict'])
         # pic
-        lmda1 = model
-        lmda2 = model
+        stylemixer = model.featurizer.network.stymix
+        lmda1 = {}
+        lmda2 = {}
+        for name, module in stylemixer.items():
+            lmda1[name] = F.softmax(module.lmda * 10, dim=-1)[:,0].mean()
+            lmda2[name] = 1 - F.softmax(module.lmda2 * 10, dim=-1)[:,0].mean()
+        
+        keys = list(lmda1.keys())
+        keys = [re.search(r'\d+', key).group() for key in keys]
+        values = [float(tensor.item()) for tensor in lmda1.values()]
+        plt.plot(keys, values, marker='o', linestyle='-', color='b')
+
+        # 添加标签和标题
+        plt.xlabel('Layer')
+        plt.ylabel('frequency')
+        plt.title('The frequency of augmentation in various layers')
+
+        # 显示图形
+        plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png")
+        plt.clf()
+
         
 if __name__ == "__main__":
     main()

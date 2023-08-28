@@ -91,6 +91,14 @@ class ERM(Algorithm):
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
+        # Mean Teacher
+        if self.hparams['MT']:
+            self.featurizer_teacher = networks.Featurizer(input_shape, self.hparams)
+            self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
+            preprocess_teacher(self.featurizer, self.featurizer_teacher)
+            preprocess_teacher(self.classifier, self.classifier_teacher)
+            self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
+
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
@@ -103,13 +111,29 @@ class ERM(Algorithm):
         all_y = torch.cat(y)
         self.optimizer.zero_grad()
 
-        loss = F.cross_entropy(self.predict(all_x), all_y)
+        if self.hparams['MT']:
+            x_s = self.network(all_x)
+            x_t = self.network_teacher(all_x)
+            
+            loss_cls = F.cross_entropy(x_s, all_y)
+            x_s, x_t = F.softmax(x_s / self.hparams['T'], dim=1), F.softmax(x_t / self.hparams['T'], dim=1)
+            loss_cot = F.kl_div(x_s.log(), x_t, reduction='batchmean')
+            loss = loss_cls + loss_cot
+        else:
+            loss = F.cross_entropy(self.predict(all_x), all_y)
         loss.backward()
         self.optimizer.step()
 
+        if self.hparams['MT']:
+            update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'])
+            return {"loss": loss.item(), "loss_cot": loss_cot.item()}        
         return {"loss": loss.item()}
 
     def predict(self, x):
+        if self.hparams['MT']:
+            xs = self.network(x)
+            xt = self.network_teacher(x)
+            return xs, xt
         return self.network(x)
 
     def get_params(self):
@@ -466,13 +490,7 @@ class MSMT2(Algorithm):
         else:
             x_o = self.network(x)
             loss_cls = F.cross_entropy(x_o, y)
-            # self.featurizer.network.set_activation_status(False)
-            # x_o = self.network(x)
-            # self.featurizer.network.set_activation_status(True)
-            # x_aug = self.network(x)
-            # loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_aug, y)
-            # x_o, x_aug = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_aug / self.hparams['T'], dim=1)
-            # loss_cls += F.kl_div(x_o.log(), x_aug, reduction='batchmean')
+
         loss = loss_cls + self.hparams['cot_w']*(loss_cot + loss_cs)
         self.optimizer.zero_grad()
         loss.backward()

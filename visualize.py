@@ -3,6 +3,7 @@ from distutils.util import strtobool
 from glob import glob
 from re import split
 import sys
+from matplotlib.colors import ListedColormap
 import torch
 from domainbed.algorithms import MSMT2
 import numpy as np
@@ -15,6 +16,7 @@ from domainbed.datasets import transforms as DBT
 from torch.utils.data.dataloader import DataLoader
 from openTSNE import TSNE
 from domainbed.lib.fast_data_loader import FastDataLoader
+from matplotlib.gridspec import GridSpec
 
 if torch.cuda.is_available():
     device = "cuda"
@@ -35,7 +37,8 @@ def main():
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
     dataset = vars(datasets)[output[6]](args.data_dir)
-    class_name = dataset.datasets[0].classes
+    class_names = dataset.datasets[0].classes
+    domain_names = dataset.environments
 
     for pth in glob(args.output_dir + "/*.pth"):
         checkpoint = torch.load(pth)
@@ -99,17 +102,38 @@ def main():
             domains.append(inputs['domain'])
         flat_list = [tensor for sublist in targets for tensor in sublist]
         targets = torch.cat(flat_list)
+        targets_name = [class_names[index] for index in targets]
         flat_list = [tensor for sublist in domains for tensor in sublist]
         domains = torch.cat(flat_list)
+        domains_name = [domain_names[index] for index in domains]
+
+        side_length = 4  # 设置正方形的边长
+        fig, axes = pyplot.subplots(2, len(features_layer), figsize=(len(features_layer) * side_length, 2 * side_length))
+
         for i, (f, s) in enumerate(zip(features_layer, styles_layer)):
             F = TSNE().fit(f.cpu())
-            pyplot.scatter(F[:, 0], F[:, 1], 5, targets.cpu())
-            pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + 'Layer' + str(i) + "class.png")
-            pyplot.clf()
+            ax1 = fig.add_subplot(axes[0, i])
+            scatter1 = ax1.scatter(F[:, 0], F[:, 1], 5, c=targets.cpu())
+            ax1.set_xticks([])
+            ax1.set_yticks([])
+            
             S = TSNE().fit(s.cpu())
-            pyplot.scatter(S[:, 0], S[:, 1], 5, domains.cpu())
-            pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + 'Layer' + str(i) + "domain.png")
-            pyplot.clf()
+            ax2 = fig.add_subplot(axes[1, i])
+            scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
+            ax2.set_xticks([])
+            ax2.set_yticks([])
+            ax2.set_xlabel(f'Layer {i}', fontsize=20)
+        # 为散点图添加图例
+        legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names)
+        ax1.add_artist(legend1)  # 在同一个图中添加多个图例
+
+        legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names)
+        ax2.add_artist(legend2)  # 在同一个图中添加多个图例
+        axes[0, 0].set_ylabel('Class', fontsize=20)
+        axes[1, 0].set_ylabel('Domain', fontsize=20)
+        pyplot.tight_layout()
+        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png")
+        pyplot.clf()
 
 def get_dataset(test_envs, dataset):
     in_splits = []
