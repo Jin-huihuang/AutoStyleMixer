@@ -124,15 +124,15 @@ def main():
             ax2.set_yticks([])
             ax2.set_xlabel(f'Layer {i}', fontsize=20)
         # 为散点图添加图例
-        legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, lot=1)
+        legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1)
         ax1.add_artist(legend1)  # 在同一个图中添加多个图例
 
-        legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, lot=1)
+        legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, loc=1)
         ax2.add_artist(legend2)  # 在同一个图中添加多个图例
         axes[0, 0].set_ylabel('Class', fontsize=20)
         axes[1, 0].set_ylabel('Domain', fontsize=20)
         pyplot.tight_layout()
-        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=1000)
+        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=2000)
         pyplot.clf()
 
 def get_dataset(test_envs, dataset):
