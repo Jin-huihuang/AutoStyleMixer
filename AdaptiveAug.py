@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description="Domain generalization")
     parser.add_argument("--network", type=str, default="RN50")
     parser.add_argument("--output_dir",
-                        default='/export/home/zhh/project/MHDG/train_output/PACS/230821_10-10-02_PACS_MSMT2_100_3e-05R1_M/checkpoints',
+                        default='/export/home/zhh/project/MHDG/train_output/PACS/230823_10-29-18_PACS_MSMT2_100_3e-05R1_M/checkpoints',
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
     parser.add_argument("--data_dir", default='/data', type=str)
     args = parser.parse_args()
@@ -41,21 +41,24 @@ def main():
         lmda1 = {}
         lmda2 = {}
         for name, module in stylemixer.items():
-            lmda1[name] = F.softmax(module.lmda * 10, dim=-1)[:,0].mean()
-            lmda2[name] = 1 - F.softmax(module.lmda2 * 10, dim=-1)[:,0].mean()
+            lmda1[name] = F.softmax(module.lmda * 100, dim=-1)[:,0].mean()
+            lmda2[name] = 1 - F.softmax(module.lmda2 * 100, dim=-1)[:,0].mean()
         
         keys = list(lmda1.keys())
         keys = [re.search(r'\d+', key).group() for key in keys]
         values = [float(tensor.item()) for tensor in lmda1.values()]
         plt.plot(keys, values, marker='o', linestyle='-', color='b')
+        keys = list(lmda2.keys())
+        keys = [re.search(r'\d+', key).group() for key in keys]
+        values = [float(tensor.item()) for tensor in lmda2.values()]
+        plt.plot(keys, values, marker='o', linestyle='-', color='r')
 
         # 添加标签和标题
         plt.xlabel('Layer')
         plt.ylabel('frequency')
-        plt.title('The frequency of augmentation in various layers')
 
         # 显示图形
-        plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png")
+        plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png", dpi=1000)
         plt.clf()
 
         

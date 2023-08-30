@@ -229,15 +229,15 @@ class MixStyle2(nn.Module):
             lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
         
         if self.hparams['AdaptiveAug']:
-            lmda2 = self.softmax(self.lmda2*self.T)[:,0].view(-1, C, 1, 1)
+            lmda2 = self.softmax(self.lmda2*self.T).view(-1, C, 1, 1)
         
         # if self.hparams['c_dropout']:
         #     lmda = lmda.expand(mu.size())
         #     mask = lmda.new_empty(lmda.shape).bernoulli_(1 - self.hparams['c_drop_prob'])
         #     lmda = 1 - lmda * mask
         if self.hparams['AdaptiveAug']:
-            mu_mix = mu * (lmda[0:1] * lmda2 + lmda[1:2]) + mu2 * lmda[0:1] * (1 - lmda2)
-            sig_mix = mu * (lmda[0:1] * lmda2 + lmda[1:2]) + sig2 * lmda[0:1] * (1 - lmda2)
+            mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * (1 - lmda2[1:2])
+            sig_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * (1 - lmda2[1:2])
         elif self.hparams['GB']:
             mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
             sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]
