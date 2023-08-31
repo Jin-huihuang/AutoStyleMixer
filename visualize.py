@@ -32,20 +32,21 @@ def main():
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
     parser.add_argument("--data_dir", default='/data', type=str)
     parser.add_argument("--mode", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
+    parser.add_argument("--layer", type=list, default=[0,2,4], help='Visualize layers')
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
     dataset = vars(datasets)[output[6]](args.data_dir)
-    class_names = dataset.datasets[0].classes
-    domain_names = dataset.environments
 
     for pth in glob(args.output_dir + "/*.pth"):
+        class_names = dataset.datasets[0].classes
+        domain_names = dataset.environments.copy()
         checkpoint = torch.load(pth)
         test_envs = checkpoint['test_envs']
+        domain_names.pop(test_envs[0])
         model = MSMT2(dataset.input_shape, dataset.num_classes, len(dataset) - len(test_envs), checkpoint['model_hparams']).to(device)
         model.load_state_dict(checkpoint['model_dict'])
-        # numpy.save(args.output_dir + "/" + "text_vector.npy", model.texts.cpu().numpy())
         model.eval()
         sum = None
         targets = None
@@ -89,7 +90,7 @@ def main():
             inputs = {**batches}
             with torch.no_grad():
                 net = model.featurizer.network
-                feature, style = net.embed(inputs['x'], mode=args.mode)
+                feature, style = net.embed(inputs['x'], mode=args.mode, layer=args.layer)
                 if len(features_layer) == 0:
                     features_layer = feature
                     styles_layer = style
@@ -102,10 +103,10 @@ def main():
             domains.append(inputs['domain'])
         flat_list = [tensor for sublist in targets for tensor in sublist]
         targets = torch.cat(flat_list)
-        targets_name = [class_names[index] for index in targets]
+        # targets_name = [class_names[index] for index in targets]
         flat_list = [tensor for sublist in domains for tensor in sublist]
         domains = torch.cat(flat_list)
-        domains_name = [domain_names[index] for index in domains]
+        # domains_name = [domain_names[index] for index in domains]
 
         side_length = 4  # 设置正方形的边长
         fig, axes = pyplot.subplots(2, len(features_layer), figsize=(len(features_layer) * side_length, 2 * side_length))
@@ -126,13 +127,12 @@ def main():
         # 为散点图添加图例
         legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1)
         ax1.add_artist(legend1)  # 在同一个图中添加多个图例
-
         legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, loc=1)
         ax2.add_artist(legend2)  # 在同一个图中添加多个图例
         axes[0, 0].set_ylabel('Class', fontsize=20)
         axes[1, 0].set_ylabel('Domain', fontsize=20)
         pyplot.tight_layout()
-        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=2000)
+        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=500)
         pyplot.clf()
 
 def get_dataset(test_envs, dataset):

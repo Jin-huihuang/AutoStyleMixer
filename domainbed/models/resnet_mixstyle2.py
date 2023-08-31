@@ -440,7 +440,7 @@ class ResNet2(nn.Module):
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
 
-    def embed(self, x, mode=0):
+    def embed(self, x, mode=0, layer=[]):
         assert mode in [0, 1, 2], "mode must be 0, 1, or 2"
         x = torch.cat(x)
         out_emb = []
@@ -450,28 +450,33 @@ class ResNet2(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x) # (B, C, H, W)
         emb, style = self.mix(x, mode, 'conv1')
-        out_emb.append(emb)
-        out_style.append(style)
+        if 0 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
             
         x = self.layer1(x)
         emb, style = self.mix(x, mode, 'conv2_x')
-        out_emb.append(emb)
-        out_style.append(style)
+        if 1 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
         
         x = self.layer2(x)
         emb, style = self.mix(x, mode, 'conv3_x')
-        out_emb.append(emb)
-        out_style.append(style)
+        if 2 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
 
         x = self.layer3(x)
         emb, style = self.mix(x, mode, 'conv4_x')
-        out_emb.append(emb)
-        out_style.append(style)
+        if 3 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
 
         x = self.layer4(x)
         emb, style = self.mix(x, mode, 'conv5_x')
-        out_emb.append(emb)
-        out_style.append(style)
+        if 4 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
 
         return out_emb, out_style
 
