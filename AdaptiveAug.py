@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--output_dir",
                         default='/export/home/zhh/project/MHDG/train_output/PACS/230823_10-29-18_PACS_MSMT2_100_3e-05R1_M/checkpoints',
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
-    parser.add_argument("--data_dir", default='/data', type=str)
+    parser.add_argument("--data_dir", default='/root/data1/', type=str)
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)

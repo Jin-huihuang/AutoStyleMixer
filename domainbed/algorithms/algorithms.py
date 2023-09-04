@@ -488,8 +488,17 @@ class MSMT2(Algorithm):
             else:
                 loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
         else:
-            x_o = self.network(x)
-            loss_cls = F.cross_entropy(x_o, y)
+            if self.hparams['CL']:
+                self.featurizer.network.set_activation_status(False)
+                x_o = self.network(x)
+                self.featurizer.network.set_activation_status(True)
+                x_a = self.network(x)
+                loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_a, y)
+                x_o, x_a = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_a / self.hparams['T'], dim=1)
+                loss_cot = F.kl_div(x_o.log(), x_a, reduction='batchmean')
+            else:
+                x_o = self.network(x)
+                loss_cls = F.cross_entropy(x_o, y)
 
         loss = loss_cls + self.hparams['cot_w']*(loss_cot + loss_cs)
         self.optimizer.zero_grad()
