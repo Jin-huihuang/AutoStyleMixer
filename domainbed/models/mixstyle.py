@@ -107,6 +107,7 @@ class MixStyle2(nn.Module):
                 self.lmda = torch.nn.Parameter(torch.full((1, 2), initial_value))
             self.softmax = nn.Softmax(dim=-1)
         if self.hparams["AdaptiveAug"]:
+            self.softmax = nn.Softmax(dim=-1)
             if self.hparams['fb']:
                 self.lmda2 = torch.nn.Parameter(torch.full((num_features, 2), initial_value))
             else:
@@ -118,7 +119,10 @@ class MixStyle2(nn.Module):
     
     def Multi_test(self, x, multi=False):
         B, C, H, W = x.shape
-        if self.hparams['GB'] == 1: 
+        if self.hparams['GB'] == 0:
+            lmda = self.beta.sample((B, 1, 1, 1))
+            lmda = lmda.to(x.device)
+        elif self.hparams['GB'] == 1: 
             lmda = F.softmax(self.lmda * self.T).permute(1,0).view(2, -1, 1, 1)
             lmda = (lmda >= 0.5).float()
         elif self.hparams['GB'] == 2:
@@ -236,8 +240,8 @@ class MixStyle2(nn.Module):
         #     mask = lmda.new_empty(lmda.shape).bernoulli_(1 - self.hparams['c_drop_prob'])
         #     lmda = 1 - lmda * mask
         if self.hparams['AdaptiveAug']:
-            mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * (1 - lmda2[1:2])
-            sig_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * (1 - lmda2[1:2])
+            mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * lmda2[1:2]
+            sig_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * lmda2[1:2]
         elif self.hparams['GB']:
             mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
             sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]

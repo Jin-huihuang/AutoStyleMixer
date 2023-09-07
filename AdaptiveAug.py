@@ -9,6 +9,7 @@ import torch
 from domainbed.algorithms import MSMT2
 import numpy as np
 from domainbed.datasets import datasets, split_dataset
+from matplotlib.ticker import FormatStrFormatter  
 import torch.nn.functional as F
 
 if torch.cuda.is_available():
@@ -23,7 +24,7 @@ def main():
     parser.add_argument("--output_dir",
                         default='/export/home/zhh/project/MHDG/train_output/PACS/230823_10-29-18_PACS_MSMT2_100_3e-05R1_M/checkpoints',
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
-    parser.add_argument("--data_dir", default='/root/data1/', type=str)
+    parser.add_argument("--data_dir", default='/root/data1/data', type=str)
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)
@@ -41,24 +42,34 @@ def main():
         lmda1 = {}
         lmda2 = {}
         for name, module in stylemixer.items():
-            lmda1[name] = F.softmax(module.lmda * 100, dim=-1)[:,0].mean()
-            lmda2[name] = 1 - F.softmax(module.lmda2 * 100, dim=-1)[:,0].mean()
-        
+            lmda1[name] = F.softmax(module.lmda * 10000, dim=-1)[:,0].mean()
+            lmda2[name] = F.softmax(module.lmda2 * 1000, dim=-1)[:,0].mean()
+        fig, ax1 = plt.subplots()
         keys = list(lmda1.keys())
         keys = [re.search(r'\d+', key).group() for key in keys]
         values = [float(tensor.item()) for tensor in lmda1.values()]
-        plt.plot(keys, values, marker='o', linestyle='-', color='b')
+        ax1.plot(keys, values, marker='o', linestyle='-', color='b', label='Probability')
+        ax1.set_xlabel('Stage')
+        ax1.set_ylabel('Probability')
+
+        ax2 = ax1.twinx()
         keys = list(lmda2.keys())
         keys = [re.search(r'\d+', key).group() for key in keys]
         values = [float(tensor.item()) for tensor in lmda2.values()]
-        plt.plot(keys, values, marker='o', linestyle='-', color='r')
+        ax2.plot(keys, values, marker='o', linestyle='-', color='r', label='Weight')
+        ax2.set_ylabel('Weight')
+        
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines = lines1 + lines2
+        labels = labels1 + labels2
+        ax1.legend(lines, labels, loc='upper right')
 
-        # 添加标签和标题
-        plt.xlabel('Layer')
-        plt.ylabel('frequency')
-
+        ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        ax2.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        
         # 显示图形
-        plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png", dpi=1000)
+        plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png", dpi=500)
         plt.clf()
 
         
