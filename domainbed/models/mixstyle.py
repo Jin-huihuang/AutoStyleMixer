@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class MixStyle(nn.Module):
     """MixStyle.
     Reference:
@@ -58,7 +57,7 @@ class MixStyle(nn.Module):
         sig_mix = sig * lmda + sig2 * (1 - lmda)
 
         return x_normed * sig_mix + mu_mix
-        
+
 class MixStyle2(nn.Module):
     """MixStyle (w/ domain prior).
     The input should contain two equal-sized mini-batches from two distinct domains.
@@ -117,10 +116,9 @@ class MixStyle2(nn.Module):
             else:
                 self.lmda2 = torch.nn.Parameter(torch.zeros(1, 2))
 
-
     def __repr__(self):
         return f"MixStyle(p={self.p}, alpha={self.alpha}, eps={self.eps})"
-    
+
     def Multi_test(self, x, multi=False):
         B, C, H, W = x.shape
         if self.hparams['GB'] == 0:
@@ -173,77 +171,6 @@ class MixStyle2(nn.Module):
                 x[index_s:index_e] = x[index_s:index_e] * sig + mu
             multi_x = x
         return multi_x
-
-    # def forward(self, x, activated=False, multi=False):
-    #     """
-    #     For the input x, the first half comes from one domain,
-    #     while the second half comes from the other domain.
-    #     """
-    #     if not self.training:
-    #         if not self.hparams['Multi_test']:
-    #             return x
-    #         else:
-    #             return self.Multi_test(x, multi)
-    #     if self.hparams['method'] == 'F':
-    #         content, style = self.decouple(x)
-    #         style = self.mix_style(style)
-    #         return self.couple(content, style)
-    #     B, C, H, W = x.shape
-
-    #     mu = x.mean(dim=[2, 3], keepdim=True)
-    #     var = x.var(dim=[2, 3], keepdim=True)
-    #     sig = (var + self.eps).sqrt()
-    #     mu, sig = mu.detach(), sig.detach()
-        
-    #     new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1) --> (sta,D,1,C,1,1)
-    #     if self.hparams['bn']:
-    #         mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
-        
-    #     # EMA style
-    #     if not activated or not self.MT:
-    #         if self._buffers['style'].sum() == 0:  # Check if it's still uninitialized
-    #             self._buffers['style'] = new_statistics
-    #         else:
-    #             self._buffers['style'] = self._buffers['style'] * self.momentum + new_statistics * (1 - self.momentum)
-    #         if self.MT:    
-    #             return x
-
-    #     # mix_style, shuffle
-    #     ori_perm = torch.arange(self.domain_n)
-    #     while True:
-    #         perm = torch.randperm(ori_perm.size(0))
-    #         if torch.all(perm != ori_perm):
-    #             break
-    #     mu2, sig2 = self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
-    #     x_normed = (x - mu) / sig
-    #     if self.hparams['random']:
-    #         lmda = self.beta.sample((B, 1, 1, 1))
-    #         lmda = lmda.to(x.device)
-    #     # 1.Gumbel-Softmax
-    #     elif self.hparams['GB'] == 1: 
-    #         lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
-    #     elif self.hparams['GB'] == 2:
-    #         if self.hparams['detach']:
-    #             x_avg = x.detach().mean(dim=(0,2,3))
-    #         else:
-    #             x_avg = x.mean(dim=(0,2,3))
-    #         x_variation = self.variation(x_avg)
-    #         lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
-    #     else:
-    #         lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
-
-    #     if self.hparams['AdaptiveAug']:
-    #         lmda2 = self.softmax(self.lmda2*self.T).view(-1, C, 1, 1)  
-    #         mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * lmda2[1:2]
-    #         sig_mix = sig * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * lmda2[1:2]
-    #     elif self.hparams['GB']:
-    #         mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
-    #         sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]
-    #     else:
-    #         mu_mix = mu * lmda + mu2 * (1 - lmda)
-    #         sig_mix = sig * lmda + sig2 * (1 - lmda)
-
-    #     return x_normed * sig_mix + mu_mix
     
     def forward(self, x, activated=False, multi=False):
         """
@@ -266,14 +193,14 @@ class MixStyle2(nn.Module):
         mix_style = self.mix_style(content, style)
 
         return self.couple(content, mix_style)
-    
+
     def decouple(self, x):
         if self.hparams['method'] == 'F':
             content, style, old_style = self.Fourier(x)
         else:
             content, style, old_style = self.Norm(x)
         return content, style, old_style
-    
+
     def mix_style(self, content, style):
         B, C, H, W = content.shape
         # mix_style, shuffle
@@ -288,4 +215,66 @@ class MixStyle2(nn.Module):
             lmda = lmda.to(content.device)
         # 1.Gumbel-Softmax
         elif self.hparams['GB'] == 1: 
-   
+            lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
+        else:
+            lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
+
+        if self.hparams['method'] == "F":
+            style2 = self._buffers['style'][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, H, W)
+        else:
+            style2 = [self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
+        
+        style = torch.stack(style) if isinstance(style, list) else style
+        style2 = torch.stack(style2) if isinstance(style2, list) else style2
+
+        if self.hparams['AdaptiveAug']:
+            lmda2 = self.softmax(self.lmda2 * self.T).view(-1, C, 1, 1)
+            mix_style = style * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + style2 * lmda[0:1] * lmda2[1:2]
+        elif self.hparams['GB']:
+            mix_style = style * lmda[0:1] + style2 * lmda[1:2]
+        else:
+            mix_style = style * lmda + style2 * (1 - lmda)
+        return mix_style
+
+    def couple(self, content, style):
+        if self.hparams['method'] == 'F':
+            return self.compose(content, style)
+        else:
+            return content * style[1] + style[0]
+
+    def Norm(self, x):
+        B, C, H, W = x.shape
+        mu = x.mean(dim=[2, 3], keepdim=True)
+        var = x.var(dim=[2, 3], keepdim=True)
+        sig = (var + self.eps).sqrt()
+        mu, sig = mu.detach(), sig.detach()
+
+        new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1) --> (sta,D,1,C,1,1)
+        if self.hparams['bn']:
+            mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
+        x_normed = (x - mu) / sig
+        return x_normed, [mu, sig], new_statistics
+
+    def Fourier(self, x):
+        B, C, H, W = x.shape
+        fft_pha, fft_amp = self.decompose(x)
+        old_amp = fft_amp.view(self.domain_n, B//self.domain_n, C, H, W).mean(dim=1, keepdim=True)
+        return fft_pha, fft_amp, old_amp
+
+    def decompose(self, x):
+        fft_im = torch.view_as_real(torch.fft.fft2(x, norm='backward'))
+        fft_amp = fft_im.pow(2).sum(dim=-1, keepdim=False)
+        fft_amp = torch.sqrt(self.replace_denormals(fft_amp))
+        fft_pha = torch.atan2(fft_im[..., 1], self.replace_denormals(fft_im[..., 0]))
+        return fft_pha.detach(), fft_amp.detach()
+
+    def compose(self, phase, amp):
+        x = torch.stack([torch.cos(phase) * amp, torch.sin(phase) * amp], dim=-1) 
+        x = x / math.sqrt(x.shape[2] * x.shape[3])
+        x = torch.view_as_complex(x)
+        return torch.fft.irfft2(x, s=x.shape[2:], norm='ortho')
+    
+    def replace_denormals(x, threshold=1e-5):
+        y = x.clone()
+        y[(x < threshold) & (x > -1.0 * threshold)] = threshold
+        return y                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
