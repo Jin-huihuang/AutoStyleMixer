@@ -1,7 +1,6 @@
 """MixStyle w/ domain label
 https://github.com/KaiyangZhou/mixstyle-release/blob/master/imcls/models/resnet_mixstyle2.py
 """
-import random
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo

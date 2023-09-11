@@ -83,7 +83,10 @@ class MixStyle2(nn.Module):
         self.MT = self.hparams['MT']
 
         self.domain_n = domain_n - 1 # leave-one-out
-        self.register_buffer("statistics", torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
+        if self.hparams['method'] == 'F':
+            self.register_buffer("style", None)
+        else:
+            self.register_buffer("style", torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
         if self.hparams['GB'] == 2:
             if self.hparams['fb']:
                 self.variation = nn.Sequential(
@@ -103,16 +106,16 @@ class MixStyle2(nn.Module):
             self.beta = torch.distributions.Beta(0.1, 0.1)
         else:
             if self.hparams['fb']:
-                self.lmda = torch.nn.Parameter(torch.full((num_features, 2), initial_value))
+                self.lmda = torch.nn.Parameter(torch.zeros(num_features, 2))
             else:
-                self.lmda = torch.nn.Parameter(torch.full((1, 2), initial_value))
+                self.lmda = torch.nn.Parameter(torch.zeros(1, 2))
             self.softmax = nn.Softmax(dim=-1)
         if self.hparams["AdaptiveAug"]:
             self.softmax = nn.Softmax(dim=-1)
             if self.hparams['fb']:
-                self.lmda2 = torch.nn.Parameter(torch.full((num_features, 2), initial_value))
+                self.lmda2 = torch.nn.Parameter(torch.zeros(num_features, 2))
             else:
-                self.lmda2 = torch.nn.Parameter(torch.full((1, 2), initial_value))
+                self.lmda2 = torch.nn.Parameter(torch.zeros(1, 2))
 
 
     def __repr__(self):
@@ -126,13 +129,6 @@ class MixStyle2(nn.Module):
         elif self.hparams['GB'] == 1: 
             lmda = F.softmax(self.lmda * self.T).permute(1,0).view(2, -1, 1, 1)
             lmda = (lmda >= 0.5).float()
-        elif self.hparams['GB'] == 2:
-            if self.hparams['detach']:
-                x_avg = x.detach().mean(dim=(0,2,3))
-            else:
-                x_avg = x.mean(dim=(0,2,3))
-            x_variation = self.variation(x_avg)
-            lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
         if self.hparams['AdaptiveAug']:
             lmda2 = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
 
@@ -140,13 +136,13 @@ class MixStyle2(nn.Module):
         var = x.var(dim=[2, 3], keepdim=True)
         sig0 = (var + self.eps).sqrt()
         if multi:
-            domain_n = self._buffers['statistics'].size(1)
+            domain_n = self._buffers['style'].size(1)
             # mu0, sig0 = mu.mean(dim=0, keepdim=True), sig.mean(dim=0, keepdim=True)
             x_normed = (x - mu0) / sig0
             multi_x = x
             for n in range(domain_n):
-                mu = self._buffers['statistics'][0, n]
-                sig = self._buffers['statistics'][1, n]
+                mu = self._buffers['style'][0, n]
+                sig = self._buffers['style'][1, n]
                 if self.hparams['AdaptiveAug']:
                     mu = mu0 * (lmda[0:1] * lmda2 + lmda[1:2]) + mu * lmda[0:1] * (1 - lmda2)
                     sig = sig0 * (lmda[0:1] * lmda2 + lmda[1:2]) + sig * lmda[0:1] * (1 - lmda2)
@@ -156,7 +152,7 @@ class MixStyle2(nn.Module):
                 x_mix = x_normed * sig + mu
                 multi_x = torch.concat([multi_x, x_mix], dim=0)
         else:
-            domain_n = self._buffers['statistics'].size(1)
+            domain_n = self._buffers['style'].size(1)
             test_size = x.size(0) // (domain_n + 1)
             # mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
             # mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
@@ -164,8 +160,8 @@ class MixStyle2(nn.Module):
             x_normed[0:test_size] = x[0:test_size]
             x = x_normed
             for n in range(domain_n):
-                mu = self._buffers['statistics'][0, n]
-                sig = self._buffers['statistics'][1, n]
+                mu = self._buffers['style'][0, n]
+                sig = self._buffers['style'][1, n]
                 index_s = (n+1) * test_size
                 index_e = (n+2) * test_size
                 if self.hparams['AdaptiveAug']:
@@ -178,6 +174,77 @@ class MixStyle2(nn.Module):
             multi_x = x
         return multi_x
 
+    # def forward(self, x, activated=False, multi=False):
+    #     """
+    #     For the input x, the first half comes from one domain,
+    #     while the second half comes from the other domain.
+    #     """
+    #     if not self.training:
+    #         if not self.hparams['Multi_test']:
+    #             return x
+    #         else:
+    #             return self.Multi_test(x, multi)
+    #     if self.hparams['method'] == 'F':
+    #         content, style = self.decouple(x)
+    #         style = self.mix_style(style)
+    #         return self.couple(content, style)
+    #     B, C, H, W = x.shape
+
+    #     mu = x.mean(dim=[2, 3], keepdim=True)
+    #     var = x.var(dim=[2, 3], keepdim=True)
+    #     sig = (var + self.eps).sqrt()
+    #     mu, sig = mu.detach(), sig.detach()
+        
+    #     new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1) --> (sta,D,1,C,1,1)
+    #     if self.hparams['bn']:
+    #         mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
+        
+    #     # EMA style
+    #     if not activated or not self.MT:
+    #         if self._buffers['style'].sum() == 0:  # Check if it's still uninitialized
+    #             self._buffers['style'] = new_statistics
+    #         else:
+    #             self._buffers['style'] = self._buffers['style'] * self.momentum + new_statistics * (1 - self.momentum)
+    #         if self.MT:    
+    #             return x
+
+    #     # mix_style, shuffle
+    #     ori_perm = torch.arange(self.domain_n)
+    #     while True:
+    #         perm = torch.randperm(ori_perm.size(0))
+    #         if torch.all(perm != ori_perm):
+    #             break
+    #     mu2, sig2 = self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
+    #     x_normed = (x - mu) / sig
+    #     if self.hparams['random']:
+    #         lmda = self.beta.sample((B, 1, 1, 1))
+    #         lmda = lmda.to(x.device)
+    #     # 1.Gumbel-Softmax
+    #     elif self.hparams['GB'] == 1: 
+    #         lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
+    #     elif self.hparams['GB'] == 2:
+    #         if self.hparams['detach']:
+    #             x_avg = x.detach().mean(dim=(0,2,3))
+    #         else:
+    #             x_avg = x.mean(dim=(0,2,3))
+    #         x_variation = self.variation(x_avg)
+    #         lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
+    #     else:
+    #         lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
+
+    #     if self.hparams['AdaptiveAug']:
+    #         lmda2 = self.softmax(self.lmda2*self.T).view(-1, C, 1, 1)  
+    #         mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * lmda2[1:2]
+    #         sig_mix = sig * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * lmda2[1:2]
+    #     elif self.hparams['GB']:
+    #         mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
+    #         sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]
+    #     else:
+    #         mu_mix = mu * lmda + mu2 * (1 - lmda)
+    #         sig_mix = sig * lmda + sig2 * (1 - lmda)
+
+    #     return x_normed * sig_mix + mu_mix
+    
     def forward(self, x, activated=False, multi=False):
         """
         For the input x, the first half comes from one domain,
@@ -188,94 +255,37 @@ class MixStyle2(nn.Module):
                 return x
             else:
                 return self.Multi_test(x, multi)
-        if self.hparams['method'] == 'F':
-            return self.Fourier(x)
-        
-        B, C, H, W = x.shape
-
-        mu = x.mean(dim=[2, 3], keepdim=True)
-        var = x.var(dim=[2, 3], keepdim=True)
-        sig = (var + self.eps).sqrt()
-        mu, sig = mu.detach(), sig.detach()
-        
-        new_statistics = torch.stack([mu, sig], dim=0).view(2, self.domain_n, B//self.domain_n, C, 1, 1).mean(dim=2, keepdim=True) # (sta,D,B/D,C,1,1) --> (sta,D,1,C,1,1)
-        if self.hparams['bn']:
-            mu, sig = new_statistics[0].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), new_statistics[1].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
-        
-        # EMA statistics
+        content, style, old_style = self.decouple(x)
         if not activated or not self.MT:
-            if self._buffers['statistics'].sum() == 0:  # Check if it's still uninitialized
-                self._buffers['statistics'] = new_statistics
+            if self._buffers['style'] is None:  # Check if it's still uninitialized
+                self._buffers['style'] = old_style
             else:
-                self._buffers['statistics'] = self._buffers['statistics'] * self.momentum + new_statistics * (1 - self.momentum)
-            if self.MT:    
+                self._buffers['style'] = self._buffers['style'] * self.momentum + old_style * (1 - self.momentum)
+            if self.MT:
                 return x
+        mix_style = self.mix_style(content, style)
 
+        return self.couple(content, mix_style)
+    
+    def decouple(self, x):
+        if self.hparams['method'] == 'F':
+            content, style, old_style = self.Fourier(x)
+        else:
+            content, style, old_style = self.Norm(x)
+        return content, style, old_style
+    
+    def mix_style(self, content, style):
+        B, C, H, W = content.shape
         # mix_style, shuffle
         ori_perm = torch.arange(self.domain_n)
         while True:
             perm = torch.randperm(ori_perm.size(0))
             if torch.all(perm != ori_perm):
                 break
-        mu2, sig2 = self._buffers['statistics'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['statistics'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)
-        x_normed = (x - mu) / sig
+
         if self.hparams['random']:
             lmda = self.beta.sample((B, 1, 1, 1))
-            lmda = lmda.to(x.device)
+            lmda = lmda.to(content.device)
         # 1.Gumbel-Softmax
         elif self.hparams['GB'] == 1: 
-            lmda = F.gumbel_softmax(self.lmda, 1/self.T, hard=True).view(2, -1, 1, 1)
-        elif self.hparams['GB'] == 2:
-            if self.hparams['detach']:
-                x_avg = x.detach().mean(dim=(0,2,3))
-            else:
-                x_avg = x.mean(dim=(0,2,3))
-            x_variation = self.variation(x_avg)
-            lmda = F.gumbel_softmax(torch.stack((x_variation,1-x_variation)), 1/self.T, hard=True, dim=0).view(2, -1, 1, 1)
-        else:
-            lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
-        
-        if self.hparams['AdaptiveAug']:
-            lmda2 = self.softmax(self.lmda2*self.T).view(-1, C, 1, 1)
-        
-        # if self.hparams['c_dropout']:
-        #     lmda = lmda.expand(mu.size())
-        #     mask = lmda.new_empty(lmda.shape).bernoulli_(1 - self.hparams['c_drop_prob'])
-        #     lmda = 1 - lmda * mask
-        if self.hparams['AdaptiveAug']:
-            mu_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + mu2 * lmda[0:1] * lmda2[1:2]
-            sig_mix = mu * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + sig2 * lmda[0:1] * lmda2[1:2]
-        elif self.hparams['GB']:
-            mu_mix = mu * lmda[0:1] + mu2 * lmda[1:2]
-            sig_mix = sig * lmda[0:1] + sig2 * lmda[1:2]
-        else:
-            mu_mix = mu * lmda + mu2 * (1 - lmda)
-            sig_mix = sig * lmda + sig2 * (1 - lmda)
-
-        return x_normed * sig_mix + mu_mix
-    
-    def Norm(self, x, activated=False, multi=False):
-
-        return
-    def Fourier(self, x, activated=False, multi=False):
-        fft_pha, fft_amp = self.decompose(x)
-        x = self.compose(fft_pha, fft_amp)
-        return
-    
-    def replace_denormals(self, x, threshold=1e-5):
-        y = x.clone()
-        y[(x < threshold) & (x > -1.0 * threshold)] = threshold
-        return y
-
-    def decompose(self, x):
-        fft_im = torch.view_as_real(torch.fft.fft2(x, norm='backward'))
-        fft_amp = fft_im.pow(2).sum(dim=-1, keepdim=False)
-        fft_amp = torch.sqrt(self.replace_denormals(fft_amp))
-        fft_pha = torch.atan2(fft_im[..., 1], self.replace_denormals(fft_im[..., 0]))
-        return fft_pha, fft_amp
-
-    def compose(self, phase, amp):
-        x = torch.stack([torch.cos(phase) * amp, torch.sin(phase) * amp], dim=-1) 
-        x = x / math.sqrt(x.shape[2] * x.shape[3])
-        x = torch.view_as_complex(x)
-        return torch.fft.irfft2(x, s=x.shape[2:], norm='ortho')
+   

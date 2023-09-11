@@ -26,6 +26,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams['unlr'] = (True, True)
     hparams["cc"] = (False, False)
     hparams['method'] = ('N', 'N')
+    hparams['nvs1'] = (False, False)
     hparams["AdaptiveAug"] = (False, False)
     hparams["selfKL"] = (False, False)
     hparams["allKL"] = (False, False)
