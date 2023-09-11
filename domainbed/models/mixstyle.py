@@ -1,6 +1,7 @@
 """
 https://github.com/KaiyangZhou/mixstyle-release/blob/master/imcls/models/mixstyle.py
 """
+import math
 import random
 import torch
 import torch.nn as nn
@@ -187,6 +188,8 @@ class MixStyle2(nn.Module):
                 return x
             else:
                 return self.Multi_test(x, multi)
+        if self.hparams['method'] == 'F':
+            return self.Fourier(x)
         
         B, C, H, W = x.shape
 
@@ -250,3 +253,29 @@ class MixStyle2(nn.Module):
             sig_mix = sig * lmda + sig2 * (1 - lmda)
 
         return x_normed * sig_mix + mu_mix
+    
+    def Norm(self, x, activated=False, multi=False):
+
+        return
+    def Fourier(self, x, activated=False, multi=False):
+        fft_pha, fft_amp = self.decompose(x)
+        x = self.compose(fft_pha, fft_amp)
+        return
+    
+    def replace_denormals(self, x, threshold=1e-5):
+        y = x.clone()
+        y[(x < threshold) & (x > -1.0 * threshold)] = threshold
+        return y
+
+    def decompose(self, x):
+        fft_im = torch.view_as_real(torch.fft.fft2(x, norm='backward'))
+        fft_amp = fft_im.pow(2).sum(dim=-1, keepdim=False)
+        fft_amp = torch.sqrt(self.replace_denormals(fft_amp))
+        fft_pha = torch.atan2(fft_im[..., 1], self.replace_denormals(fft_im[..., 0]))
+        return fft_pha, fft_amp
+
+    def compose(self, phase, amp):
+        x = torch.stack([torch.cos(phase) * amp, torch.sin(phase) * amp], dim=-1) 
+        x = x / math.sqrt(x.shape[2] * x.shape[3])
+        x = torch.view_as_complex(x)
+        return torch.fft.irfft2(x, s=x.shape[2:], norm='ortho')

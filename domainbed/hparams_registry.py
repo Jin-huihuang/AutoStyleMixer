@@ -25,6 +25,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["hidden_size"] = (512, 512)
     hparams['unlr'] = (True, True)
     hparams["cc"] = (False, False)
+    hparams['method'] = ('N', 'N')
     hparams["AdaptiveAug"] = (False, False)
     hparams["selfKL"] = (False, False)
     hparams["allKL"] = (False, False)
