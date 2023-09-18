@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 
-from .mixstyle import MixStyle2 as MixStyle
+from .mixstyle2 import MixStyle2 as MixStyle
 
 model_urls = {
     "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",

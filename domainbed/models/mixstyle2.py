@@ -57,7 +57,7 @@ class MixStyle(nn.Module):
         sig_mix = sig * lmda + sig2 * (1 - lmda)
 
         return x_normed * sig_mix + mu_mix
-
+    
 class MixStyle2(nn.Module):
     """MixStyle (w/ domain prior).
     The input should contain two equal-sized mini-batches from two distinct domains.
@@ -183,17 +183,19 @@ class MixStyle2(nn.Module):
             else:
                 return self.Multi_test(x, multi)
         content, style, old_style = self.decouple(x)
-        if not activated or not self.MT:
-            if self._buffers['style'] is None:  # Check if it's still uninitialized
-                self._buffers['style'] = old_style
-            else:
-                self._buffers['style'] = self._buffers['style'] * self.momentum + old_style * (1 - self.momentum)
-            if self.MT:
-                return x
+        
+        if self.hparams['nvs1']:
+            if not activated or not self.MT:
+                if self._buffers['style'] is None:  # Check if it's still uninitialized
+                    self._buffers['style'] = old_style
+                else:
+                    self._buffers['style'] = self._buffers['style'] * self.momentum + old_style * (1 - self.momentum)
+                if self.MT:
+                    return x
         mix_style = self.mix_style(content, style)
 
         return self.couple(content, mix_style)
-
+    
     def decouple(self, x):
         if self.hparams['method'] == 'F':
             content, style, old_style = self.Fourier(x)
@@ -219,11 +221,13 @@ class MixStyle2(nn.Module):
         else:
             lmda = self.softmax(self.lmda*self.T)[:,0].view(-1, C, 1, 1)
 
-        if self.hparams['method'] == "F":
-            style2 = self._buffers['style'][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, H, W)
+        if self.hparams['nvs1']:
+            if self.hparams['method'] == "F":
+                style2 = self._buffers['style'][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, H, W)
+            else:
+                style2 = [self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
         else:
-            style2 = [self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
-        
+            style2 = style.detach().view(self.domain_n, B//self.domain_n, C, H, W)[perm].view(B, C, H, W)
         style = torch.stack(style) if isinstance(style, list) else style
         style2 = torch.stack(style2) if isinstance(style2, list) else style2
 
@@ -235,7 +239,7 @@ class MixStyle2(nn.Module):
         else:
             mix_style = style * lmda + style2 * (1 - lmda)
         return mix_style
-
+    
     def couple(self, content, style):
         if self.hparams['method'] == 'F':
             return self.compose(content, style)
@@ -266,10 +270,7 @@ class MixStyle2(nn.Module):
         fft_amp = fft_im.pow(2).sum(dim=-1, keepdim=False)
         fft_amp = torch.sqrt(self.replace_denormals(fft_amp))
         fft_pha = torch.atan2(fft_im[..., 1], self.replace_denormals(fft_im[..., 0]))
-        if self.hparams['no_detach']:
-            return fft_pha, fft_amp
-        else:
-            return fft_pha.detach(), fft_amp.detach()
+        return fft_pha.detach(), fft_amp.detach()
 
     def compose(self, phase, amp):
         x = torch.stack([torch.cos(phase) * amp, torch.sin(phase) * amp], dim=-1) 
@@ -277,7 +278,7 @@ class MixStyle2(nn.Module):
         x = torch.view_as_complex(x)
         return torch.fft.irfft2(x, s=x.shape[2:], norm='ortho')
     
-    def replace_denormals(x, threshold=1e-5):
+    def replace_denormals(self, x, threshold=1e-5):
         y = x.clone()
-        y[(x < threshold) & (x > -1.0 * threshold)] = threshold
+        y[(x < threshold)&(x > -1.0 * threshold)] = threshold
         return y
