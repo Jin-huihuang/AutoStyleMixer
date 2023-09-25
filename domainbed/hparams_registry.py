@@ -30,6 +30,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams["AdaptiveAug"] = (False, False)
     hparams["selfKL"] = (False, False)
     hparams["allKL"] = (False, False)
+    hparams["EMA"] = (True, True)
 
     hparams["use_lambda_scheduler"] = (True, True)
     hparams['model_name'] = ('small', 'small')

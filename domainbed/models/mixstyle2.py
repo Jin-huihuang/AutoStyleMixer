@@ -188,6 +188,8 @@ class MixStyle2(nn.Module):
             if not activated or not self.MT:
                 if self._buffers['style'] is None:  # Check if it's still uninitialized
                     self._buffers['style'] = old_style
+                elif not self.hparams['EMA']:
+                    self._buffers['style'] = old_style
                 else:
                     self._buffers['style'] = self._buffers['style'] * self.momentum + old_style * (1 - self.momentum)
                 if self.MT:
