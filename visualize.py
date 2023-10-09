@@ -32,6 +32,7 @@ def main():
                         type=str, help="please add train_output pathdir to here, like 'train_output/OfficeHome/...'")
     parser.add_argument("--data_dir", default='/data', type=str)
     parser.add_argument("--mode", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
+    parser.add_argument("--method", type=str, default='N', help='0:source_only, 1:target_only, 2:all')
     parser.add_argument("--layer", type=list, default=[0,2,4], help='Visualize layers')
     args = parser.parse_args()
     
@@ -45,6 +46,7 @@ def main():
         checkpoint = torch.load(pth)
         test_envs = checkpoint['test_envs']
         domain_names.pop(test_envs[0])
+        checkpoint['model_hparams']['method'] = args.method
         model = MSMT2(dataset.input_shape, dataset.num_classes, len(dataset) - len(test_envs), checkpoint['model_hparams']).to(device)
         model.load_state_dict(checkpoint['model_dict'])
         model.eval()
@@ -123,7 +125,7 @@ def main():
             scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
             ax2.set_xticks([])
             ax2.set_yticks([])
-            ax2.set_xlabel(f'Layer {i}', fontsize=20)
+            ax2.set_xlabel(f'Stage {args.layer[i]}', fontsize=20)
         # 为散点图添加图例
         legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1)
         ax1.add_artist(legend1)  # 在同一个图中添加多个图例

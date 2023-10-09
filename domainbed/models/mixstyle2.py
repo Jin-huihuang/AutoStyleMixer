@@ -83,9 +83,9 @@ class MixStyle2(nn.Module):
 
         self.domain_n = domain_n - 1 # leave-one-out
         if self.hparams['method'] == 'F':
-            self.register_buffer("style", None)
+            self.register_buffer('statistics', None)
         else:
-            self.register_buffer("style", torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
+            self.register_buffer('statistics', torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
         if self.hparams['GB'] == 2:
             if self.hparams['fb']:
                 self.variation = nn.Sequential(
@@ -134,13 +134,13 @@ class MixStyle2(nn.Module):
         var = x.var(dim=[2, 3], keepdim=True)
         sig0 = (var + self.eps).sqrt()
         if multi:
-            domain_n = self._buffers['style'].size(1)
+            domain_n = self._buffers['statistics'].size(1)
             # mu0, sig0 = mu.mean(dim=0, keepdim=True), sig.mean(dim=0, keepdim=True)
             x_normed = (x - mu0) / sig0
             multi_x = x
             for n in range(domain_n):
-                mu = self._buffers['style'][0, n]
-                sig = self._buffers['style'][1, n]
+                mu = self._buffers['statistics'][0, n]
+                sig = self._buffers['statistics'][1, n]
                 if self.hparams['AdaptiveAug']:
                     mu = mu0 * (lmda[0:1] * lmda2 + lmda[1:2]) + mu * lmda[0:1] * (1 - lmda2)
                     sig = sig0 * (lmda[0:1] * lmda2 + lmda[1:2]) + sig * lmda[0:1] * (1 - lmda2)
@@ -150,7 +150,7 @@ class MixStyle2(nn.Module):
                 x_mix = x_normed * sig + mu
                 multi_x = torch.concat([multi_x, x_mix], dim=0)
         else:
-            domain_n = self._buffers['style'].size(1)
+            domain_n = self._buffers['statistics'].size(1)
             test_size = x.size(0) // (domain_n + 1)
             # mu, sig = mu.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True), sig.view(domain_n + 1, test_size, -1, 1, 1).mean(dim=1, keepdim=True)
             # mu, sig = mu.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1), sig.repeat(1, test_size, 1, 1, 1).view(x.size(0), -1, 1, 1)
@@ -158,8 +158,8 @@ class MixStyle2(nn.Module):
             x_normed[0:test_size] = x[0:test_size]
             x = x_normed
             for n in range(domain_n):
-                mu = self._buffers['style'][0, n]
-                sig = self._buffers['style'][1, n]
+                mu = self._buffers['statistics'][0, n]
+                sig = self._buffers['statistics'][1, n]
                 index_s = (n+1) * test_size
                 index_e = (n+2) * test_size
                 if self.hparams['AdaptiveAug']:
@@ -186,12 +186,12 @@ class MixStyle2(nn.Module):
         
         if self.hparams['nvs1']:
             if not activated or not self.MT:
-                if self._buffers['style'] is None:  # Check if it's still uninitialized
-                    self._buffers['style'] = old_style
+                if self._buffers['statistics'] is None:  # Check if it's still uninitialized
+                    self._buffers['statistics'] = old_style
                 elif not self.hparams['EMA']:
-                    self._buffers['style'] = old_style
+                    self._buffers['statistics'] = old_style
                 else:
-                    self._buffers['style'] = self._buffers['style'] * self.momentum + old_style * (1 - self.momentum)
+                    self._buffers['statistics'] = self._buffers['statistics'] * self.momentum + old_style * (1 - self.momentum)
                 if self.MT:
                     return x
         mix_style = self.mix_style(content, style)
@@ -225,9 +225,9 @@ class MixStyle2(nn.Module):
 
         if self.hparams['nvs1']:
             if self.hparams['method'] == "F":
-                style2 = self._buffers['style'][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, H, W)
+                style2 = self._buffers['statistics'][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, H, W)
             else:
-                style2 = [self._buffers['style'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['style'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
+                style2 = [self._buffers['statistics'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['statistics'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
         else:
             style2 = style.detach().view(self.domain_n, B//self.domain_n, C, H, W)[perm].view(B, C, H, W)
         style = torch.stack(style) if isinstance(style, list) else style
