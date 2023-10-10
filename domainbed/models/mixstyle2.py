@@ -229,7 +229,10 @@ class MixStyle2(nn.Module):
             else:
                 style2 = [self._buffers['statistics'][0][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1), self._buffers['statistics'][1][perm].repeat(1, B//self.domain_n, 1, 1, 1).view(B, C, 1, 1)]
         else:
-            style2 = style.detach().view(self.domain_n, B//self.domain_n, C, H, W)[perm].view(B, C, H, W)
+            if self.hparams['method'] == 'F':
+                style2 = style.detach().view(self.domain_n, B//self.domain_n, C, H, W)[perm].view(B, C, H, W)
+            else:
+                style2 = [style[0].detach().view(self.domain_n, B//self.domain_n, C, 1, 1)[perm].view(B, C, 1, 1), style[1].detach().view(self.domain_n, B//self.domain_n, C, 1, 1)[perm].view(B, C, 1, 1)]
         style = torch.stack(style) if isinstance(style, list) else style
         style2 = torch.stack(style2) if isinstance(style2, list) else style2
 

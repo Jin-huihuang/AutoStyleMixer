@@ -20,6 +20,7 @@ DATASETS = [
     # Big images
     "VLCS",
     "PACS",
+    "PACS_vis",
     "OfficeHome",
     "TerraIncognita",
     "DomainNet",
@@ -224,6 +225,16 @@ class PACS(MultipleEnvironmentImageFolder):
 
     def __init__(self, root):
         self.dir = os.path.join(root, "PACS/")
+        super().__init__(self.dir)
+
+class PACS_vis(MultipleEnvironmentImageFolder):
+    # CHECKPOINT_FREQ = 200
+    CHECKPOINT_FREQ = 200
+    N_STEPS = 5001
+    ENVIRONMENTS = ["A", "C", "P", "S"]
+
+    def __init__(self, root):
+        self.dir = os.path.join(root, "PACS_vis/")
         super().__init__(self.dir)
 
 
