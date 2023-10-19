@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--data_dir", default='/data', type=str)
     parser.add_argument("--mode", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
     parser.add_argument("--method", type=str, default='N', help='0:source_only, 1:target_only, 2:all')
-    parser.add_argument("--layer", type=list, default=[0,4], help='Visualize layers')
+    parser.add_argument("--layer", type=list, default=[0,2,4], help='Visualize layers')
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)
@@ -122,7 +122,10 @@ def main():
             
             S = TSNE().fit(s.cpu())
             ax2 = fig.add_subplot(axes[1, i])
-            scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
+            if i == len(features_layer) - 1:
+                scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=targets.cpu())
+            else:
+                scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
             ax2.set_xticks([])
             ax2.set_yticks([])
             ax2.set_xlabel(f'Stage {args.layer[i]}', fontsize=20)
@@ -137,7 +140,7 @@ def main():
         axes[0, 0].set_ylabel('Feature map', fontsize=20)
         axes[1, 0].set_ylabel('Style', fontsize=20)
         pyplot.tight_layout()
-        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=500)
+        pyplot.savefig(args.output_dir + "/mode" + str(args.mode) + 'TE' + str(test_envs) + "_plots.png", dpi=1000)
         pyplot.clf()
 
 def get_dataset(test_envs, dataset):

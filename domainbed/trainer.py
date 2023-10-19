@@ -231,7 +231,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                 writer.add_scalars_with_prefix(lmda_s, step, f"{testenv_name}/all/")
                 writer.add_scalars_with_prefix(lmda_t, step, f"{testenv_name}/all/")
 
-            if args.save and step >= args.save and results['train_outMT'] > best_acc:
+            if args.save and step >= args.save and (hparams['MT'] and results['train_outMT'] > best_acc) or ((not hparams['MT'] and results['train_out'] > best_acc)):
                 ckpt_dir = args.out_dir / "checkpoints"
                 ckpt_dir.mkdir(exist_ok=True)
 
@@ -253,7 +253,10 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
                     torch.save(save_dict, path)
                 else:
                     logger.debug("DEBUG Mode -> no save (org path: %s)" % path)
-                best_acc = results['train_outMT']
+                if hparams['MT']:
+                    best_acc = results['train_outMT']
+                else:
+                    best_acc = results['train_out']
 
             # swad
             if swad:
