@@ -33,12 +33,12 @@ def main():
     parser.add_argument("--data_dir", default='/data', type=str)
     parser.add_argument("--mode", type=int, default=0, help='0:source_only, 1:target_only, 2:all')
     parser.add_argument("--method", type=str, default='N', help='0:source_only, 1:target_only, 2:all')
-    parser.add_argument("--layer", type=list, default=[0,2,4], help='Visualize layers')
+    parser.add_argument("--layer", type=list, default=[0,4], help='Visualize layers')
     args = parser.parse_args()
     
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
-    dataset = vars(datasets)[output[6]+"_vis"](args.data_dir)
+    dataset = vars(datasets)[output[6]](args.data_dir)
 
     for pth in glob(args.output_dir + "/*.pth"):
         class_names = dataset.datasets[0].classes
@@ -130,12 +130,12 @@ def main():
             ax2.set_yticks([])
             ax2.set_xlabel(f'Stage {args.layer[i]}', fontsize=20)
             # 为散点图添加图例
-            legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1)
+            legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1, prop={'size': 8})
             ax1.add_artist(legend1)  # 在同一个图中添加多个图例
-            if i == len(features_layer) - 1:
-                legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Class", labels=class_names, loc=1)
-            else:
-                legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, loc=1)
+            # if i == len(features_layer) - 1:
+            #     legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Class", labels=class_names, loc=1, prop={'size': 8})
+            # else:
+            legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, loc=1, prop={'size': 8})
             ax2.add_artist(legend2)  # 在同一个图中添加多个图例
         axes[0, 0].set_ylabel('Feature map', fontsize=20)
         axes[1, 0].set_ylabel('Style', fontsize=20)
