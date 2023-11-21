@@ -101,7 +101,7 @@ class MixStyle2(nn.Module):
                 nn.Linear(num_features, 1, bias=False),
                 nn.Sigmoid()
                 )
-        elif self.hparams['random']:
+        elif self.hparams['random'] and not self.hparams["AdaptiveAug"]:
             self.beta = torch.distributions.Beta(0.1, 0.1)
         else:
             if self.hparams['fb']:

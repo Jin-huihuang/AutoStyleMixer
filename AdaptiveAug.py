@@ -29,24 +29,25 @@ def main():
     
     output = split('[. /]', args.output_dir)
     output = [item for item in filter(lambda x:x != '', output)]
-    dataset = vars(datasets)[output[6]](args.data_dir)
+    dataset = vars(datasets)[output[5]](args.data_dir)
     class_name = dataset.datasets[0].classes
 
     for pth in glob(args.output_dir + "/*.pth"):
         checkpoint = torch.load(pth)
         test_envs = checkpoint['test_envs']
         model = MSMT2(dataset.input_shape, dataset.num_classes, len(dataset) - len(test_envs), checkpoint['model_hparams']).to(device)
-        model.load_state_dict(checkpoint['model_dict'])
+        model.load_state_dict(checkpoint['model_dict'], strict=False)
         # pic
         stylemixer = model.featurizer.network.stymix
         lmda1 = {}
         lmda2 = {}
         for name, module in stylemixer.items():
-            lmda1[name] = F.softmax(module.lmda * 10000, dim=-1)[:,0].mean()
-            lmda2[name] = F.softmax(module.lmda2 * 1000, dim=-1)[:,0].mean()
+            lmda1[name] = F.softmax(module.lmda.mean(0) * 10000, dim=-1)[0]
+            lmda2[name] = F.softmax(module.lmda2.mean(0) * 1000, dim=-1)[0]
         fig, ax1 = plt.subplots()
         keys = list(lmda1.keys())
-        keys = [re.search(r'\d+', key).group() for key in keys]
+        keys = [str(x) for x in range(len(keys))]
+        # keys = [re.search(r'\d+', key).group() for key in keys]
         values = [float(tensor.item()) for tensor in lmda1.values()]
         ax1.plot(keys, values, marker='o', linestyle='-', color='b', label='Probability')
         ax1.set_xlabel('Stage')
@@ -54,7 +55,8 @@ def main():
 
         ax2 = ax1.twinx()
         keys = list(lmda2.keys())
-        keys = [re.search(r'\d+', key).group() for key in keys]
+        keys = [str(x) for x in range(len(keys))]
+        # keys = [re.search(r'\d+', key).group() for key in keys]
         values = [float(tensor.item()) for tensor in lmda2.values()]
         ax2.plot(keys, values, marker='o', linestyle='-', color='r', label='Weight')
         ax2.set_ylabel('Weight')
@@ -71,6 +73,66 @@ def main():
         # 显示图形
         plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png", dpi=500)
         plt.clf()
+
+        # stylemixer = model.featurizer.network.stymix
+        # lmda1 = {}
+        # lmda2 = {}
+
+        # # 增加一个列表用于存储未mean()之前的值
+        # raw_values1 = {}
+        # raw_values2 = {}
+
+        # # 获取未mean()之前的值
+        # for name, module in stylemixer.items():
+        #     raw_values1[name] = F.softmax(module.lmda * 10000, dim=-1)[:, 0].tolist()
+        #     raw_values2[name] = F.softmax(module.lmda2 * 10000, dim=-1)[:, 0].tolist()
+
+        #     # 计算平均值
+        #     lmda1[name] = np.mean(raw_values1[name])
+        #     lmda2[name] = np.mean(raw_values2[name])
+
+        # # 你的其余代码保持不变
+
+        # fig, ax1 = plt.subplots()
+        # keys = list(lmda1.keys())
+        # keys = [re.search(r'\d+', key).group() for key in keys]
+        # values = [float(tensor.item()) for tensor in lmda1.values()]
+        # ax1.plot(keys, values, marker='o', linestyle='-', color='b', label='Probability')
+
+        # # 添加未mean()之前的散点
+        # for name, values_list in raw_values1.items():
+        #     scatter_x = [re.search(r'\d+', name).group()] * len(values_list)
+        #     ax1.scatter(scatter_x, values_list, color='b', alpha=0.5, s=5)
+
+        # ax1.set_xlabel('Stage')
+        # ax1.set_ylabel('Probability')
+
+        # ax2 = ax1.twinx()
+        # keys = list(lmda2.keys())
+        # keys = [re.search(r'\d+', key).group() for key in keys]
+        # values = [float(tensor.item()) for tensor in lmda2.values()]
+        # ax2.plot(keys, values, marker='o', linestyle='-', color='r', label='Weight')
+
+        # # 添加未mean()之前的散点
+        # for name, values_list in raw_values2.items():
+        #     scatter_x = [re.search(r'\d+', name).group()] * len(values_list)
+        #     ax2.scatter(scatter_x, values_list, color='r', alpha=0.5, s=5)
+
+        # ax2.set_ylabel('Weight')
+
+        # # 你的其余代码保持不变
+
+        # # 显示图例
+        # ax1.legend(loc='upper right')
+        # ax2.legend(loc='upper left')
+
+        # ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        # ax2.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+        # # 显示图形
+        # plt.savefig(args.output_dir + "/" + 'TE' + str(test_envs) + ".png", dpi=500)
+        # plt.clf()
+
 
         
 if __name__ == "__main__":

@@ -129,6 +129,7 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
         hparams,
         **kwargs
     )
+    # algorithm = torch.nn.DataParallel(algorithm, device_ids=range(torch.cuda.device_count()))
 
     algorithm.to(device)
 
