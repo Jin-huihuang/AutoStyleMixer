@@ -447,6 +447,7 @@ class MSMT2(Algorithm):
             preprocess_teacher(self.classifier, self.classifier_teacher)
             self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
         
+        self.network = torch.nn.DataParallel(self.network, device_ids=range(torch.cuda.device_count()))        
         self.optimizer = get_optimizer(
             hparams["optimizer"],
             params=self.get_params(),
