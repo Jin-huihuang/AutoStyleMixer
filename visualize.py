@@ -122,10 +122,10 @@ def main():
             
             S = TSNE().fit(s.cpu())
             ax2 = fig.add_subplot(axes[1, i])
-            if i == len(features_layer) - 1:
-                scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=targets.cpu())
-            else:
-                scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
+            # if i == len(features_layer) - 1:
+            #     scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=targets.cpu())
+            # else:
+            scatter2 = ax2.scatter(S[:, 0], S[:, 1], 5, c=domains.cpu())
             ax2.set_xticks([])
             ax2.set_yticks([])
             ax2.set_xlabel(f'Stage {args.layer[i]}', fontsize=20)

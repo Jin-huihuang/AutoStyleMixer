@@ -36,7 +36,7 @@ def main():
         checkpoint = torch.load(pth)
         test_envs = checkpoint['test_envs']
         model = MSMT2(dataset.input_shape, dataset.num_classes, len(dataset) - len(test_envs), checkpoint['model_hparams']).to(device)
-        model.load_state_dict(checkpoint['model_dict'])
+        model.load_state_dict(checkpoint['model_dict'], strict=False)
         # pic
         stylemixer = model.featurizer.network.stymix
         lmda1 = {}
