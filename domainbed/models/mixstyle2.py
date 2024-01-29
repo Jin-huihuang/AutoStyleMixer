@@ -82,28 +82,13 @@ class MixStyle2(nn.Module):
         self.MT = self.hparams['MT']
 
         self.domain_n = domain_n - 1 # leave-one-out
+        self.beta = torch.distributions.Beta(0.1, 0.1)
         if self.hparams['method'] == 'F':
             self.register_buffer('statistics', None)
         else:
             self.register_buffer('statistics', torch.zeros(2, self.domain_n, 1, num_features, 1, 1)) # dim 2 denote (mean, var)
-        if self.hparams['GB'] == 2:
-            if self.hparams['fb']:
-                self.variation = nn.Sequential(
-            nn.Linear(num_features, num_features, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(num_features, num_features, bias=False),
-            nn.Sigmoid()
-            )
-            else:
-                self.variation = nn.Sequential(
-                nn.Linear(num_features, num_features, bias=False),
-                nn.ReLU(inplace=True),
-                nn.Linear(num_features, 1, bias=False),
-                nn.Sigmoid()
-                )
-        elif self.hparams['random'] and not self.hparams["AdaptiveAug"]:
-            self.beta = torch.distributions.Beta(0.1, 0.1)
-        else:
+        
+        if not self.hparams['random'] and self.hparams["AdaptiveAug"]:
             if self.hparams['fb']:
                 self.lmda = torch.nn.Parameter(torch.zeros(num_features, 2))
             else:
@@ -209,12 +194,12 @@ class MixStyle2(nn.Module):
         B, C, H, W = content.shape
         # mix_style, shuffle
         ori_perm = torch.arange(self.domain_n)
-        while True:
+        while True: # random select other domain
             perm = torch.randperm(ori_perm.size(0))
             if torch.all(perm != ori_perm):
                 break
 
-        if self.hparams['random']:
+        if self.hparams['random'] and not self.hparams['AdaptiveAug']: # MixStyle
             lmda = self.beta.sample((B, 1, 1, 1))
             lmda = lmda.to(content.device)
         # 1.Gumbel-Softmax
@@ -237,10 +222,18 @@ class MixStyle2(nn.Module):
         style2 = torch.stack(style2) if isinstance(style2, list) else style2
 
         if self.hparams['AdaptiveAug']:
-            lmda2 = self.softmax(self.lmda2 * self.T).view(-1, C, 1, 1)
-            mix_style = style * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + style2 * lmda[0:1] * lmda2[1:2]
-        elif self.hparams['GB']:
-            mix_style = style * lmda[0:1] + style2 * lmda[1:2]
+            assert self.hparams['AdaptiveP'] or self.hparams['AdaptiveW'], "At least one of AdaptiveP or AdaptiveW is True"
+            if self.hparams['AdaptiveP'] and self.hparams['AdaptiveW']:
+                lmda2 = self.softmax(self.lmda2 * self.T).view(-1, C, 1, 1)
+                mix_style = style * (lmda[0:1] * lmda2[0:1] + lmda[1:2]) + style2 * lmda[0:1] * lmda2[1:2]
+            elif not self.hparams['AdaptiveP'] and self.hparams['AdaptiveW']:
+                lmda2 = self.softmax(self.lmda2 * self.T).view(-1, C, 1, 1)
+                if random.random() > 0.5:
+                    return style
+                mix_style = style * lmda2[0:1] + lmda[1:2] + style2 * lmda2[1:2]
+            elif self.hparams['AdaptiveP'] and not self.hparams['AdaptiveW']:
+                lmda2 = self.beta.sample((B, 1, 1, 1)).to(content.device)
+                mix_style = style * (lmda[0:1] * lmda2 + lmda[1:2]) + style2 * lmda[0:1] * (1 - lmda2)
         else:
             mix_style = style * lmda + style2 * (1 - lmda)
         return mix_style

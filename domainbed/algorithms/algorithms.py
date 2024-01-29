@@ -507,9 +507,9 @@ class MSMT2(Algorithm):
         self.optimizer.step()
         if self.hparams['MT']:
             if self.hparams['warm_MT']:
-                warm_update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'], global_step=kwargs['step'], warm_up=self.hparams['warm_up_step'])
+                warm_update_teacher(self.network.module, self.network_teacher, momentum=self.hparams['momentum_MT'], global_step=kwargs['step'], warm_up=self.hparams['warm_up_step'])
             else:
-                update_teacher(self.network, self.network_teacher, momentum=self.hparams['momentum_MT'])
+                update_teacher(self.network.module, self.network_teacher, momentum=self.hparams['momentum_MT'])
             if self.hparams['CL']:
                 return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item(), "loss_cs": loss_cs.item(), "loss_ct": loss_ct.item(), "sum_cot": (loss_ct.item()+loss_cs.item())}
             return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item()}

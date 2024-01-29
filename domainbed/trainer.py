@@ -221,16 +221,16 @@ def train(test_envs, args, hparams, n_steps, checkpoint_freq, logger, writer, ta
 
             writer.add_scalars_with_prefix(summaries, step, f"{testenv_name}/summary/")
             writer.add_scalars_with_prefix(accuracies, step, f"{testenv_name}/all/")
-            if hparams['algorithm'] == 'MSMT2' and not hparams['fb']:
-                lmda_s = {}
-                lmda_t = {}
-                for (name_s, layer_s), (name_t, layer_t) in zip(algorithm.featurizer.network.stymix.items(), algorithm.featurizer_teacher.network.stymix.items()):
-                    s = F.softmax(layer_s.lmda, dim=-1)
-                    t = F.softmax(layer_t.lmda, dim=-1)
-                    lmda_s[name_s+'_s'] = s[:,0].item()
-                    lmda_t[name_t+'_t'] = t[:,0].item()
-                writer.add_scalars_with_prefix(lmda_s, step, f"{testenv_name}/all/")
-                writer.add_scalars_with_prefix(lmda_t, step, f"{testenv_name}/all/")
+            # if hparams['algorithm'] == 'MSMT2' and not hparams['fb']:
+            #     lmda_s = {}
+            #     lmda_t = {}
+            #     for (name_s, layer_s), (name_t, layer_t) in zip(algorithm.featurizer.network.stymix.items(), algorithm.featurizer_teacher.network.stymix.items()):
+            #         s = F.softmax(layer_s.lmda, dim=-1)
+            #         t = F.softmax(layer_t.lmda, dim=-1)
+            #         lmda_s[name_s+'_s'] = s[:,0].item()
+            #         lmda_t[name_t+'_t'] = t[:,0].item()
+            #     writer.add_scalars_with_prefix(lmda_s, step, f"{testenv_name}/all/")
+            #     writer.add_scalars_with_prefix(lmda_t, step, f"{testenv_name}/all/")
 
             if args.save and step >= args.save and (hparams['MT'] and results['train_outMT'] > best_acc) or ((not hparams['MT'] and results['train_out'] > best_acc)):
                 ckpt_dir = args.out_dir / "checkpoints"

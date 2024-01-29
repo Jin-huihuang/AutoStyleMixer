@@ -84,15 +84,15 @@ def main():
 
     timestamp = misc.timestamp()
     args.unique_name = f"{timestamp}_{args.name}_{args.algorithm}_{args.checkpoint_freq}_{hparams['lr']}" 
-    if hparams['backbone'] == 'ViT':
-        args.unique_name = args.unique_name + 'V'
+    if hparams['nvs1']:
+        args.unique_name = args.unique_name + '_nvs1'
     else:
-        args.unique_name = args.unique_name + 'R'
+        args.unique_name = args.unique_name + '_1vs1'
     if hparams['unlr']:
         args.unique_name = args.unique_name + '1'
     else:
         args.unique_name = args.unique_name + '0'
-    if hparams['mix_layers'] != []:
+    if hparams['MT']:
         args.unique_name = args.unique_name + '_M'
     # path setup
     args.work_dir = Path(".")

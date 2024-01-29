@@ -28,6 +28,8 @@ def _hparams(algorithm, dataset, random_state):
     hparams['method'] = ('N', 'N')
     hparams['nvs1'] = (True, True)
     hparams["AdaptiveAug"] = (False, False)
+    hparams['AdaptiveP'] = (True, True)
+    hparams['AdaptiveW'] = (True, True)
     hparams["selfKL"] = (False, False)
     hparams["allKL"] = (False, False)
     hparams["EMA"] = (True, True)
