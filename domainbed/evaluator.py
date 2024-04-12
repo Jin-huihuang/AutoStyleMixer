@@ -53,32 +53,15 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
             batch_weights = weights[weights_offset : weights_offset + len(y)]
             weights_offset += len(x)
         batch_weights = batch_weights.to(device)
-        if hparams['Multi_test']:
-            multi_logits = torch.stack(logits.chunk(num_domains + 1,dim=0)).mean(dim=0)
-            if logits.size(1) == 1:
-                correct += (logits[0:size].gt(0).eq(y).float() * batch_weights[0:size]).sum().item()
-                correct_multi += (multi_logits.gt(0).eq(y).float() * batch_weights).sum().item()
-            else:
-                correct += (logits[0:size].argmax(1).eq(y).float() * batch_weights[0:size]).sum().item()
-                correct_multi += (multi_logits.argmax(1).eq(y).float() * batch_weights).sum().item()
-            if hparams['MT']:
-                multi_logits_t = torch.stack(logits_t.chunk(num_domains + 1,dim=0)).mean(dim=0)
-                if logits_t.size(1) == 1:
-                    correct_t += (logits_t[0:size].gt(0).eq(y).float() * batch_weights[0:size]).sum().item()
-                    correct_multi_t += (multi_logits_t.gt(0).eq(y).float() * batch_weights).sum().item()
-                else:
-                    correct_t += (logits_t[0:size].argmax(1).eq(y).float() * batch_weights[0:size]).sum().item()
-                    correct_multi_t += (multi_logits_t[0:size].argmax(1).eq(y).float() * batch_weights).sum().item()
+        if logits.size(1) == 1:
+            correct += (logits.gt(0).eq(y).float() * batch_weights).sum().item()
         else:
-            if logits.size(1) == 1:
-                correct += (logits.gt(0).eq(y).float() * batch_weights).sum().item()
+            correct += (logits.argmax(1).eq(y).float() * batch_weights).sum().item()
+        if hparams['MT']:
+            if logits_t.size(1) == 1:
+                correct_t += (logits_t.gt(0).eq(y).float() * batch_weights).sum().item()
             else:
-                correct += (logits.argmax(1).eq(y).float() * batch_weights).sum().item()
-            if hparams['MT']:
-                if logits_t.size(1) == 1:
-                    correct_t += (logits_t.gt(0).eq(y).float() * batch_weights).sum().item()
-                else:
-                    correct_t += (logits_t.argmax(1).eq(y).float() * batch_weights).sum().item()
+                correct_t += (logits_t.argmax(1).eq(y).float() * batch_weights).sum().item()
         total += batch_weights.sum().item()
 
         if debug:

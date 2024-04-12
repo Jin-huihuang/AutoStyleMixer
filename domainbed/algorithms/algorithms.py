@@ -1,5 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-
 import copy
 import math
 from torch.cuda.amp import autocast
@@ -27,6 +25,10 @@ from domainbed.models.resnet_mixstyle import (
 from domainbed.models.resnet_mixstyle2 import (
     resnet18_mixstyle2_L234_p0d5_a0d1,
     resnet50_mixstyle2_L234_p0d5_a0d1,
+)
+from domainbed.models.Auto_StyleMixer import (
+    resnet18_autostylemixer,
+    resnet50_autostylemixer,
 )
 
 def to_minibatch(x, y):
@@ -142,147 +144,6 @@ class ERM(Algorithm):
                 {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
             ]
         return params
-    
-class MHDG(Algorithm):
-    """
-    Multi-Head Domain Generalization
-    """
-
-    def __init__(self, input_shape, num_classes, num_domains, hparams, **kwargs):
-        super(MHDG, self).__init__(input_shape, num_classes, num_domains, hparams)
-        self.featurizer = networks.Featurizer(input_shape, self.hparams)
-        self.num_domains = num_domains
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        self.hparams['hidden_size'] = self.featurizer.n_outputs
-        if hparams['MH']:
-            self.MH_classifier = nn.ParameterList()
-            for i in range(num_domains):
-                fc_proj = networks.fea_proj(hparams, num_classes)
-                nn.init.kaiming_uniform_(fc_proj, mode='fan_out', a=math.sqrt(5))
-                self.MH_classifier.append(fc_proj)
-            # self.MH_classifier = torch.stack(self.MH_classifier)
-            self.classifier = networks.fea_proj(hparams, num_classes)
-            nn.init.kaiming_uniform_(self.classifier, mode='fan_out', a=math.sqrt(5))
-        else:
-            self.classifier = networks.fea_proj(hparams, num_classes)
-            nn.init.kaiming_uniform_(self.classifier, mode='fan_out', a=math.sqrt(5))
-        # self.network = nn.Sequential(self.featurizer, self.classifier)
-        self.optimizer = get_optimizer(
-            hparams["optimizer"],
-            params=self.get_params(),
-            lr=self.hparams["lr"],
-            weight_decay=self.hparams["weight_decay"],
-        )
-
-    def update(self, x, y, **kwargs):
-        all_x = torch.cat(x)
-        all_y = torch.cat(y)
-        self.optimizer.zero_grad()
-
-        ally = all_y
-        if self.hparams['MH']:
-            for i in range(self.num_domains):
-                ally = torch.cat([ally, all_y])
-        loss = F.cross_entropy(self.train_net(all_x), ally)
-        loss.backward()
-        
-        self.optimizer.step()
-
-        return {"loss": loss.item()}
-    
-    def train_net(self, x):
-        x = self.featurizer(x)
-        x = x / x.norm(dim=1, keepdim=True)
-        # pred = []
-        # for i in range(self.num_domains):
-        #     cls = self.MH_classifier[i] / self.MH_classifier[i].norm(dim=1, keepdim=True)
-        #     logits = x @ cls
-        #     pred.append(logits)
-        logit_scale = self.logit_scale.exp()
-        cla = self.classifier / self.classifier.norm(dim=1, keepdim=True)
-        x = x @ cla
-        # return torch.cat([x, torch.cat(pred)])
-        return x
-
-    def predict(self, x):
-        x = self.featurizer(x)
-        x = x / x.norm(dim=1, keepdim=True)
-        cla = self.classifier / self.classifier.norm(dim=1, keepdim=True)
-        x = x @ cla
-        return x
-        # pred = []
-        # for i in range(self.num_domains):
-        #     cls = self.MH_classifier[i] / self.MH_classifier[i].norm(dim=1, keepdim=True)
-        #     logits = x @ cls
-        #     pred.append(F.softmax(logits, dim=1))
-        # x = F.softmax(x @ self.classifier, dim=1)
-        # return sum(x, sum(pred))
-
-    def get_params(self):
-        params = [
-                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                {'params': self.classifier, 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
-            ]
-        if self.hparams['MH']:
-            for i in range(self.num_domains):
-                params.append({'params': self.MH_classifier[i], 'lr': 100 * self.hparams["lr"]})
-        return params
-
-class Discriminator(nn.Module):
-    def __init__(self, input_dim=256, hidden_dim=256, domain_num=4):
-        super(Discriminator, self).__init__()
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        layers = [
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            # nn.Linear(hidden_dim, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
-            # nn.ReLU(),
-            nn.Linear(hidden_dim, domain_num),
-            # nn.Sigmoid()
-
-            # nn.Linear(input_dim, hidden_dim),
-            # nn.ReLU(),
-            # nn.Dropout(0.5),
-            # nn.Linear(hidden_dim, 1),
-            # nn.Sigmoid()
-        ]
-        # for dep in range(1):
-        #     layers[dep * 3].weight.data.normal_(0, 0.01)
-        #     layers[dep * 3].bias.data.fill_(0.0)
-        self.layers = torch.nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.layers(x)
-
-class LambdaSheduler(nn.Module):
-    def __init__(self, gamma=1.0, max_iter=1000, **kwargs):
-        super(LambdaSheduler, self).__init__()
-        self.gamma = gamma
-        self.max_iter = max_iter
-        self.curr_iter = 0
-
-    def lamb(self):
-        p = self.curr_iter / self.max_iter
-        lamb = 2. / (1. + np.exp(-self.gamma * p)) - 1
-        return lamb
-    
-    def step(self):
-        self.curr_iter = min(self.curr_iter + 1, self.max_iter)
-
-class ReverseLayerF(Function):
-    @staticmethod
-    def forward(ctx, x, alpha):
-        ctx.alpha = alpha
-        return x.view_as(x)
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        output = grad_output.neg() * ctx.alpha
-        return output, None
 
 class Mixstyle(Algorithm):
     """MixStyle w/o domain label (random shuffle)"""
@@ -322,28 +183,14 @@ class Mixstyle2(Algorithm):
         assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
         super().__init__(input_shape, num_classes, num_domains, hparams)
         if hparams["resnet18"]:
-            network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            network = resnet18_mixstyle2_L234_p0d5_a0d1()
         else:
-            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            network = resnet50_mixstyle2_L234_p0d5_a0d1()
         self.featurizer = networks.ResNet(input_shape, self.hparams, network)
 
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
-        # Mean Teacher
-        if self.hparams['MT']:
-            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
-            self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
-            self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
-            preprocess_teacher(self.featurizer, self.featurizer_teacher)
-            preprocess_teacher(self.classifier, self.classifier_teacher)
-            self.network_teacher = nn.Sequential(self.featurizer_teacher, self.classifier_teacher)
-
-        self.optimizer = get_optimizer(
-            hparams["optimizer"],
-            params=self.get_params(),
-            lr=self.hparams["lr"],
-            weight_decay=self.hparams["weight_decay"],
-        )
+        self.optimizer = self.new_optimizer(self.network.parameters())
 
     def pair_batches(self, xs, ys):
         xs = [x.chunk(2) for x in xs]
@@ -362,85 +209,45 @@ class Mixstyle2(Algorithm):
     def update(self, x, y, **kwargs):
         pairs = self.pair_batches(x, y)
         loss = 0.0
-        loss_cls = 0.0
-        loss_tea = 0.0 
-        if self.hparams['MT']:
-            for i, ((xi, yi), (xj, yj)) in enumerate(pairs):
-                #  Mixstyle2:
-                #  For the input x, the first half comes from one domain,
-                #  while the second half comes from the other domain.
-                x2 = torch.cat([xi, xj])
-                y2 = torch.cat([yi, yj])
-                
-                self.featurizer.network.set_activation_status(False)
-                self.featurizer_teacher.network.set_activation_status(False)
-                x2_t = self.network_teacher(x2).detach()
-                x2_o = self.network(x2)
 
-                self.featurizer.network.set_activation_status(True, i)
-                self.featurizer_teacher.network.set_activation_status(True, i)
-                x2_t_aug = self.network_teacher(x2).detach()
-                x2_o_aug = self.network(x2)
-                loss_cls += F.cross_entropy(x2_o, y2) + F.cross_entropy(x2_o_aug, y2)
+        for (xi, yi), (xj, yj) in pairs:
+            #  Mixstyle2:
+            #  For the input x, the first half comes from one domain,
+            #  while the second half comes from the other domain.
+            x2 = torch.cat([xi, xj])
+            y2 = torch.cat([yi, yj])
+            loss += F.cross_entropy(self.predict(x2), y2)
 
-                x2_o, x2_o_aug = F.softmax(x2_o / self.hparams['T'], dim=1), F.softmax(x2_o_aug / self.hparams['T'], dim=1)
-                x2_t, x2_t_aug = F.softmax(x2_t / self.hparams['T'], dim=1), F.softmax(x2_t_aug / self.hparams['T'], dim=1)
-                loss_tea += F.kl_div(x2_o.log(), x2_t_aug, reduction='batchmean')  + F.kl_div(x2_o_aug.log(), x2_t, reduction='batchmean')
-        else:
-            for (xi, yi), (xj, yj) in pairs:
-                #  Mixstyle2:
-                #  For the input x, the first half comes from one domain,
-                #  while the second half comes from the other domain.
-                x2 = torch.cat([xi, xj])
-                y2 = torch.cat([yi, yj])
-                loss_cls += F.cross_entropy(self.predict(x2), y2)
+        loss /= len(pairs)
 
-        loss_cls /= len(pairs)
-        loss_tea /= len(pairs)
-        loss = loss_cls + loss_tea
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        if self.hparams['MT']:
-            if self.hparams['warm_MT']:
-                warm_update_teacher(self.network, self.network_teacher, self.hparams['steps'])
-            else:
-                update_teacher(self.network, self.network_teacher)
-
         return {"loss": loss.item()}
 
     def predict(self, x):
-        if self.hparams['MT']:
-            return self.network(x), self.network_teacher(x)
         return self.network(x)
-
-    def get_params(self):
-        params = [
-                {'params': self.featurizer.parameters(), 'lr': 1.0 * self.hparams["lr"]},
-                {'params': self.classifier.parameters(), 'lr': 100 * self.hparams["lr"] if self.hparams['unlr'] else 1.0 * self.hparams["lr"]}
-            ]
-        return params
     
-class MSMT2(Algorithm):
+class AutoSM(Algorithm):
     """MixStyle w/ domain label"""
 
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         assert input_shape[1:3] == (224, 224), "Mixstyle support R18 and R50 only"
         super().__init__(input_shape, num_classes, num_domains, hparams)
         if hparams["resnet18"]:
-            network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            network = resnet18_autostylemixer(hparams=hparams)
         else:
-            network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+            network = resnet50_autostylemixer(hparams=hparams)
         self.featurizer = networks.ResNet(input_shape, self.hparams, network)
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
         # Mean Teacher
         if self.hparams['MT']:    
             if hparams["resnet18"]:
-                network = resnet18_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+                network = resnet18_autostylemixer(hparams=hparams)
             else:
-                network = resnet50_mixstyle2_L234_p0d5_a0d1(hparams=hparams)
+                network = resnet50_autostylemixer(hparams=hparams)
             self.featurizer_teacher = networks.ResNet(input_shape, self.hparams, network)
             self.classifier_teacher = nn.Linear(self.featurizer.n_outputs, num_classes)
             preprocess_teacher(self.featurizer, self.featurizer_teacher)
@@ -479,29 +286,17 @@ class MSMT2(Algorithm):
             x_o, x_o_aug = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_o_aug / self.hparams['T'], dim=1)
             x_t, x_t_aug = F.softmax(x_t / self.hparams['T'], dim=1), F.softmax(x_t_aug / self.hparams['T'], dim=1)
             # loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean') + F.kl_div(x_o.log(), x_t, reduction='batchmean')
-            if self.hparams['CL']:
+            if self.hparams["allKL"]:
                 loss_cs = F.kl_div(x_o.log(), x_o_aug, reduction='batchmean')
                 loss_ct = F.kl_div(x_t.log(), x_t_aug, reduction='batchmean')
-            if self.hparams['selfKL']:
-                loss_cot = F.kl_div(x_o.log(), x_t, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t_aug, reduction='batchmean')
-            elif self.hparams["allKL"]:
                 loss_cot = F.kl_div(x_o.log(), x_t, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
             else:
                 loss_cot = F.kl_div(x_o.log(), x_t_aug, reduction='batchmean') + F.kl_div(x_o_aug.log(), x_t, reduction='batchmean')
         else:
-            if self.hparams['CL']:
-                self.featurizer.network.set_activation_status(False)
-                x_o = self.network(x)
-                self.featurizer.network.set_activation_status(True)
-                x_a = self.network(x)
-                loss_cls = F.cross_entropy(x_o, y) + F.cross_entropy(x_a, y)
-                x_o, x_a = F.softmax(x_o / self.hparams['T'], dim=1), F.softmax(x_a / self.hparams['T'], dim=1)
-                loss_cot = F.kl_div(x_o.log(), x_a, reduction='batchmean')
-            else:
-                x_o = self.network(x)
-                loss_cls = F.cross_entropy(x_o, y)
+            x_o = self.network(x)
+            loss_cls = F.cross_entropy(x_o, y)
 
-        loss = loss_cls + self.hparams['cot_w']*(loss_cot + loss_cs)
+        loss = loss_cls + loss_cot + loss_cs
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -510,7 +305,7 @@ class MSMT2(Algorithm):
                 warm_update_teacher(self.network.module, self.network_teacher, momentum=self.hparams['momentum_MT'], global_step=kwargs['step'], warm_up=self.hparams['warm_up_step'])
             else:
                 update_teacher(self.network.module, self.network_teacher, momentum=self.hparams['momentum_MT'])
-            if self.hparams['CL']:
+            if self.hparams['allKL']:
                 return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item(), "loss_cs": loss_cs.item(), "loss_ct": loss_ct.item(), "sum_cot": (loss_ct.item()+loss_cs.item())}
             return {"loss": loss.item(), "loss_s": loss_cls.item(), "loss_cot": loss_cot.item()}
         else:

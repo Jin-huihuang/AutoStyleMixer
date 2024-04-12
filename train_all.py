@@ -88,10 +88,6 @@ def main():
         args.unique_name = args.unique_name + '_nvs1'
     else:
         args.unique_name = args.unique_name + '_1vs1'
-    if hparams['unlr']:
-        args.unique_name = args.unique_name + '1'
-    else:
-        args.unique_name = args.unique_name + '0'
     if hparams['MT']:
         args.unique_name = args.unique_name + '_M'
     # path setup
@@ -120,7 +116,7 @@ def main():
 
     # Different to DomainBed, we support CUDA only.
     assert torch.cuda.is_available(), "CUDA is not available"
-    
+
     logger.nofmt("Args:")
     for k, v in sorted(vars(args).items()):
         logger.nofmt("\t{}: {}".format(k, v))
@@ -171,12 +167,6 @@ def main():
     ###########################################################################
     all_records = []
     results = collections.defaultdict(list)
-
-    # class_name to class_token
-    # class_name = dataset.datasets[0].classes
-    # for i in range(len(class_name)):
-    #     class_name[i] = class_name[i].replace('_', ' ')
-
 
     for test_env in args.test_envs:
         res, records = train(

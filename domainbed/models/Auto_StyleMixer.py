@@ -1,11 +1,8 @@
-"""MixStyle w/ random shuffle
-https://github.com/KaiyangZhou/mixstyle-release/blob/master/imcls/models/resnet_mixstyle.py
-"""
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 
-from .StyleMixer import MixStyle
+from .StyleMixer import MixStyle2 as MixStyle
 
 model_urls = {
     "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
@@ -90,32 +87,43 @@ class Bottleneck(nn.Module):
 
         return out
 
-
 class ResNet(nn.Module):
     def __init__(
         self, block, layers, mixstyle_layers=[], mixstyle_p=0.5, mixstyle_alpha=0.3, **kwargs
     ):
-        self.inplanes = 64
         super().__init__()
-
+        num_features = dict()
+        self.inplanes = 64
+        self.hparams = kwargs["hparams"]
         # backbone network
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        num_features["conv1"] = 64
         self.layer1 = self._make_layer(block, 64, layers[0])
+        num_features["conv2_x"] = self.inplanes
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        num_features["conv3_x"] = self.inplanes
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        num_features["conv4_x"] = self.inplanes
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.global_avgpool = nn.AdaptiveAvgPool2d(1)
+        num_features["conv5_x"] = self.inplanes
 
-        self.mixstyle = None
-        if mixstyle_layers:
-            self.mixstyle = MixStyle(p=mixstyle_p, alpha=mixstyle_alpha)
-            for layer_name in mixstyle_layers:
-                assert layer_name in ["conv1", "conv2_x", "conv3_x", "conv4_x", "conv5_x"]
-            print("Insert MixStyle after the following layers: {}".format(mixstyle_layers))
+        self.global_avgpool = nn.AdaptiveAvgPool2d(1)
         self.mixstyle_layers = mixstyle_layers
+        self.stymix = nn.ModuleDict([])
+        for layer_name in mixstyle_layers:
+            self.stymix[layer_name] = MixStyle(
+                initial_value=self.hparams['initial_value'], 
+                T=self.hparams['Mix_T'],
+                num_features=num_features[layer_name],
+                domain_n=self.hparams['domain_num'], 
+                momentum=self.hparams["momentum_style"],
+                hparams=self.hparams
+                )
+
+        self._activated = True
 
         self._out_features = 512 * block.expansion
         self.fc = nn.Identity()  # for DomainBed compatibility
@@ -160,33 +168,73 @@ class ResNet(nn.Module):
                 nn.init.normal_(m.weight, 0, 0.01)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-
-    def compute_style(self, x):
-        mu = x.mean(dim=[2, 3])
-        sig = x.std(dim=[2, 3])
-        return torch.cat([mu, sig], 1)
+    
+    def set_activation_status(self, status=True, domain=None):
+        self._activated = status
+        self.domain = domain
 
     def featuremaps(self, x):
+        if self.training:
+            multi_flag = False
+        else:
+            multi_flag = True
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = self.maxpool(x)
+        x = self.maxpool(x) # (B, C, H, W)
+        if "conv1" in self.mixstyle_layers:
+            if multi_flag:
+                multi_flag = False
+                multi = True
+            else:
+                multi = False
+            x_tmp = self.stymix["conv1"](x, self._activated, multi)
+            x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+            x = (x + x_tmp) / 2
 
         x = self.layer1(x)
         if "conv2_x" in self.mixstyle_layers:
-            x = self.mixstyle(x)
+            if multi_flag:
+                multi_flag = False
+                multi = True
+            else:
+                multi = False
+            x_tmp = self.stymix["conv2_x"](x, self._activated, multi)
+            x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+            x = (x + x_tmp) / 2
 
         x = self.layer2(x)
         if "conv3_x" in self.mixstyle_layers:
-            x = self.mixstyle(x)
+            if multi_flag:
+                multi_flag = False
+                multi = True
+            else:
+                multi = False
+            x_tmp = self.stymix["conv3_x"](x, self._activated, multi)
+            x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+            x = (x + x_tmp) / 2
 
         x = self.layer3(x)
         if "conv4_x" in self.mixstyle_layers:
-            x = self.mixstyle(x)
+            if multi_flag:
+                multi_flag = False
+                multi = True
+            else:
+                multi = False
+            x_tmp = self.stymix["conv4_x"](x, self._activated, multi)
+            x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+            x = (x + x_tmp) / 2
 
         x = self.layer4(x)
         if "conv5_x" in self.mixstyle_layers:
-            x = self.mixstyle(x)
+            if multi_flag:
+                multi_flag = False
+                multi = True
+            else:
+                multi = False
+            x_tmp = self.stymix["conv5_x"](x, self._activated, multi)
+            x = x.repeat(x_tmp.size(0)//x.size(0), 1, 1, 1)
+            x = (x + x_tmp) / 2
 
         return x
 
@@ -195,19 +243,104 @@ class ResNet(nn.Module):
         v = self.global_avgpool(f)
         return v.view(v.size(0), -1)
 
+    def embed(self, x, mode=0, layer=[]):
+        assert mode in [0, 1, 2], "mode must be 0, 1, or 2"
+        x = torch.cat(x)
+        out_emb = []
+        out_style = []
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x) # (B, C, H, W)
+        emb, style = self.mix(x, mode, 'conv1')
+        if 0 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
+            
+        x = self.layer1(x)
+        emb, style = self.mix(x, mode, 'conv2_x')
+        if 1 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
+        
+        x = self.layer2(x)
+        emb, style = self.mix(x, mode, 'conv3_x')
+        if 2 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
+
+        x = self.layer3(x)
+        emb, style = self.mix(x, mode, 'conv4_x')
+        if 3 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
+
+        x = self.layer4(x)
+        emb, style = self.mix(x, mode, 'conv5_x')
+        if 4 in layer:
+            out_emb.append(emb)
+            out_style.append(style)
+
+        return out_emb, out_style
+
+    def mix(self, x, mode, layer):
+        mu0 = x.mean(dim=[2, 3], keepdim=True)
+        var0 = x.var(dim=[2, 3], keepdim=True)
+        sig0 = (var0 + 1e-6).sqrt()
+        
+        if mode==0:
+            x = x
+        else:
+            B = x.size(0)
+            domain_num = self.hparams['domain_num'] - 1
+            x_normed = (x - mu0) / sig0
+            ori_perm = torch.arange(domain_num)
+            while True:
+                shuffle_perm = torch.randperm(ori_perm.size(0))
+                if torch.all(shuffle_perm != ori_perm):
+                    break
+            lmda = 0.5
+            if mode == 1: # MixStyle
+                perm_list = torch.arange(B).view(-1, B//domain_num)[shuffle_perm].view(-1)
+                mu2, sig2 = mu0[perm_list], sig0[perm_list]
+            else: # StyleMixer
+                (mu2, sig2) = self.stymix[layer].statistics.repeat(1, 1, B//domain_num, 1, 1, 1)[:,shuffle_perm].view(2,B,-1,1,1)
+            mu_mix = mu0 * lmda + mu2 * (1 - lmda)
+            sig_mix = sig0 * lmda + sig2 * (1 - lmda)
+            mu0 = mu_mix
+            sig0 = sig_mix
+            x = x_normed * sig_mix + mu_mix
+        mu0 = mu0.squeeze(-1).squeeze(-1)
+        sig0 = sig0.squeeze(-1).squeeze(-1)
+            
+        return torch.mean(x, dim=[2, 3]), torch.cat([mu0, sig0], dim=1)
+
+
 
 def init_pretrained_weights(model, model_url):
     pretrain_dict = model_zoo.load_url(model_url)
     model.load_state_dict(pretrain_dict, strict=False)
 
 
-def resnet18_mixstyle_L234_p0d5_a0d1(pretrained=True, **kwargs):
+"""
+Residual network configurations:
+--
+resnet18: block=BasicBlock, layers=[2, 2, 2, 2]
+resnet34: block=BasicBlock, layers=[3, 4, 6, 3]
+resnet50: block=Bottleneck, layers=[3, 4, 6, 3]
+resnet101: block=Bottleneck, layers=[3, 4, 23, 3]
+resnet152: block=Bottleneck, layers=[3, 8, 36, 3]
+"""
+
+
+def resnet18_autostylemixer(pretrained=True, **kwargs):
     model = ResNet(
         block=BasicBlock,
         layers=[2, 2, 2, 2],
-        mixstyle_layers=["conv2_x", "conv3_x", "conv4_x"],
-        mixstyle_p=0.5,
-        mixstyle_alpha=0.1,
+        mixstyle_layers=kwargs["hparams"]["mix_layers"],
+        mixstyle_p=kwargs["hparams"]["mix_p"],
+        mixstyle_alpha=kwargs["hparams"]["mix_a"],
+        **kwargs
     )
 
     if pretrained:
@@ -216,13 +349,14 @@ def resnet18_mixstyle_L234_p0d5_a0d1(pretrained=True, **kwargs):
     return model
 
 
-def resnet50_mixstyle_L234_p0d5_a0d1(pretrained=True, **kwargs):
+def resnet50_autostylemixer(pretrained=True, **kwargs):
     model = ResNet(
         block=Bottleneck,
         layers=[3, 4, 6, 3],
-        mixstyle_layers=["conv2_x", "conv3_x", "conv4_x"],
-        mixstyle_p=0.5,
-        mixstyle_alpha=0.1,
+        mixstyle_layers=kwargs["hparams"]["mix_layers"],
+        mixstyle_p=kwargs["hparams"]["mix_p"],
+        mixstyle_alpha=kwargs["hparams"]["mix_a"],
+        **kwargs
     )
 
     if pretrained:

@@ -110,7 +110,7 @@ def main():
         domains = torch.cat(flat_list)
         # domains_name = [domain_names[index] for index in domains]
 
-        side_length = 3  # 设置正方形的边长
+        side_length = 3  
         fig, axes = pyplot.subplots(2, len(features_layer), figsize=(len(features_layer) * side_length, 2 * side_length))
 
         for i, (f, s) in enumerate(zip(features_layer, styles_layer)):
@@ -129,14 +129,14 @@ def main():
             ax2.set_xticks([])
             ax2.set_yticks([])
             ax2.set_xlabel(f'Stage {args.layer[i]}', fontsize=20)
-            # 为散点图添加图例
+            
             legend1 = ax1.legend(handles=scatter1.legend_elements()[0], title="Class", labels=class_names, loc=1, prop={'size': 8})
-            ax1.add_artist(legend1)  # 在同一个图中添加多个图例
+            ax1.add_artist(legend1)  
             # if i == len(features_layer) - 1:
             #     legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Class", labels=class_names, loc=1, prop={'size': 8})
             # else:
             legend2 = ax2.legend(handles=scatter2.legend_elements()[0], title="Domain", labels=domain_names, loc=1, prop={'size': 8})
-            ax2.add_artist(legend2)  # 在同一个图中添加多个图例
+            ax2.add_artist(legend2)  
         axes[0, 0].set_ylabel('Feature map', fontsize=20)
         axes[1, 0].set_ylabel('Style', fontsize=20)
         pyplot.tight_layout()
