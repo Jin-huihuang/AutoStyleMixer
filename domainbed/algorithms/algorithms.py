@@ -2,16 +2,12 @@ import copy
 import math
 from torch.cuda.amp import autocast
 from typing import List
-from clip.model import convert_weights
 from torch.autograd import Function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.autograd as autograd
 import numpy as np
-from timm.models.vision_transformer import Block
-
-#  import higher
 
 from domainbed import networks
 from domainbed.tools import *

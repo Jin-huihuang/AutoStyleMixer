@@ -1,12 +1,10 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 import torch
-import timm
 from torch.cuda.amp import autocast
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models
-import clip
 from domainbed.lib import wide_resnet
 
 model_select = {

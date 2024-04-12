@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 
-from .StyleMixer import MixStyle2 as MixStyle
+from .StyleMixer import StyleMixer
 
 model_urls = {
     "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
@@ -114,7 +114,7 @@ class ResNet(nn.Module):
         self.mixstyle_layers = mixstyle_layers
         self.stymix = nn.ModuleDict([])
         for layer_name in mixstyle_layers:
-            self.stymix[layer_name] = MixStyle(
+            self.stymix[layer_name] = StyleMixer(
                 initial_value=self.hparams['initial_value'], 
                 T=self.hparams['Mix_T'],
                 num_features=num_features[layer_name],

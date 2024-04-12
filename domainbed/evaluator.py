@@ -27,11 +27,6 @@ def accuracy_from_loader(algorithm, loader, weights, hparams, debug=False):
         x = batch["x"].to(device)
         y = batch["y"].to(device)
         size = y.size(0)
-        if hparams['Multi_test']:
-            multi_y = y
-            for i in range(num_domains):
-                multi_y = torch.concat([multi_y, y], dim=0)
-            y = multi_y
         with torch.no_grad():
             if hparams['MT']:
                 logits, logits_t = algorithm.predict(x)

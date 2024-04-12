@@ -5,7 +5,6 @@ import random
 from re import split
 import sys
 from pathlib import Path
-import clip
 
 import tablib
 import numpy as np
@@ -59,7 +58,6 @@ def main():
     parser.add_argument("--tb_freq", default=10)
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
     parser.add_argument("--show", action="store_true", help="Show args and hparams w/o run")
-    parser.add_argument("--cls_w", type=float, default=0.1)
     parser.add_argument(
         "--evalmode",
         default="fast",
