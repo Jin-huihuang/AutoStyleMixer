@@ -3,7 +3,7 @@
 ## Abstract
 Domain generalization (DG) aims to extend machine learning algorithms to unknown target domains with different data distributions from known source domains. Traditional processing techniques, such as the Fourier transform and normalization, are employed to extract style information for cross-domain data augmentation by confusing styles to enhance model generalization for content information. However, these methods tend to mix styles from one sample into another from a different domain (one-to-one) potentially corrupting class-relevant content information, especially in deeper layers. To mitigate this, a novel N-to-one method (StyleMixer) is proposed for executing more stable cross-domain data augmentation by averaging the style information of all samples from the same domain. Then, an adaptive strategy (AdaptiveAug) for cross-domain data augmentation is proposed to automatically learn the configuration of style mixing at each layer. Finally, our proposed generalized framework (Auto-StyleMixer) constructs Multiple Contrast Learning (MCL) loss specifically for cross-domain data augmentation to further reduce the domain gap. Extensive experiments are conducted to verify the effectiveness of the proposed method, and the results show that our method can achieve state-of-the-art performance on five DG benchmarks.
 <p align="center">
-    <img src="./assets/image.png" width="70%" />
+    <img src="assets/image.png" width="70%" />
 </p>
 
 ---
