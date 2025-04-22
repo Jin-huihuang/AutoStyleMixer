@@ -89,6 +89,7 @@ class ERM(Algorithm):
         self.featurizer = networks.Featurizer(input_shape, self.hparams)
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
+        
         # Mean Teacher
         if self.hparams['MT']:
             self.featurizer_teacher = networks.Featurizer(input_shape, self.hparams)
