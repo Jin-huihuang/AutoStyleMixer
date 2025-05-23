@@ -1,6 +1,6 @@
 # Auto-StyleMixer
 
-👨‍🔬 By Huihuang Zhang, Haigen Hu*, Xiaoqin Zhang, Bin Cao
+👨‍🔬 By Huihuang Zhang, Haigen Hu*, Bin Cao, Xiaoqin Zhang
 
 > Existing domain generalization (DG) approaches that rely on traditional techniques like the Fourier transform and normalization can extract style information for cross-domain data augmentation by confusing styles to enhance model generalization. However, these one-to-one methods face two significant challenges: 1) They cannot effectively extract pure style information in deep layers, potentially disrupting the ability to learn content information. 2) Due to the unknown purity of the extracted style information, considerable resources are required to find the optimal style-mixing configuration based on manual experience. To address these challenges, we propose a universal N-to-one cross-domain data augmentation framework, named Auto-StyleMixer, which not only extracts purer style information but also adapts to learn style-mixing configurations without any manual intervention. The proposed framework can embed any traditional style extraction techniques and can be integrated as a plug-and-play module into any architecture, whether CNNs or Transformers. Extensive experiments demonstrate the effectiveness of the proposed method, showing that it achieves state-of-the-art performance on five DG benchmarks.
 
